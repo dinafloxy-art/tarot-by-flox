@@ -405,6 +405,7 @@ export default function App() {
   const followUpEndRef = useRef(null);
 
   const audioCtxRef = useRef(null);
+  const wasPlayingBeforeHideRef = useRef(false);
 
   // Предзагрузка всех 78 карт
   useEffect(() => {
@@ -618,9 +619,106 @@ export default function App() {
     }
   }, []);
 
+  // Принудительный автозапуск фонового видео на iPhone / Android без кнопки Play
+  useEffect(() => {
+    const forcePlayVideos = () => {
+      [videoRef.current, tableVideoRef.current].forEach((v) => {
+        if (v) {
+          v.muted = true;
+          v.defaultMuted = true;
+          v.playsInline = true;
+          v.setAttribute('muted', '');
+          v.setAttribute('playsinline', '');
+          v.setAttribute('webkit-playsinline', '');
+          if (v.paused) {
+            v.play().catch(() => {});
+          }
+        }
+      });
+    };
+
+    forcePlayVideos();
+    const timer = setTimeout(forcePlayVideos, 300);
+
+    const onFirstTouch = () => {
+      forcePlayVideos();
+    };
+    window.addEventListener('touchstart', onFirstTouch, { passive: true });
+    window.addEventListener('click', onFirstTouch, { passive: true });
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('touchstart', onFirstTouch);
+      window.removeEventListener('click', onFirstTouch);
+    };
+  }, [view]);
+
+  // Автоматическая пауза музыки при сворачивании браузера или выключении экрана телефона
+  useEffect(() => {
+    const handleVisibilityOrHide = () => {
+      if (document.hidden) {
+        if (bgmRef.current && !bgmRef.current.paused) {
+          wasPlayingBeforeHideRef.current = true;
+          if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+          bgmRef.current.pause();
+        }
+      } else {
+        if (wasPlayingBeforeHideRef.current && musicPlaying && bgmRef.current) {
+          wasPlayingBeforeHideRef.current = false;
+          bgmRef.current.play().catch(() => {});
+        }
+        if (videoRef.current && videoRef.current.paused) {
+          videoRef.current.play().catch(() => {});
+        }
+      }
+    };
+
+    const handlePageHide = () => {
+      if (bgmRef.current && !bgmRef.current.paused) {
+        wasPlayingBeforeHideRef.current = true;
+        if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+        bgmRef.current.pause();
+      }
+    };
+
+    const handleWindowBlur = () => {
+      // На мобильных устройствах при уходе в фон или блокировке экрана останавливаем звук
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '')) {
+        if (bgmRef.current && !bgmRef.current.paused) {
+          wasPlayingBeforeHideRef.current = true;
+          if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+          bgmRef.current.pause();
+        }
+      }
+    };
+
+    const handleWindowFocus = () => {
+      if (wasPlayingBeforeHideRef.current && musicPlaying && bgmRef.current) {
+        wasPlayingBeforeHideRef.current = false;
+        bgmRef.current.play().catch(() => {});
+      }
+      if (videoRef.current && videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrHide);
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrHide);
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [musicPlaying]);
+
   useEffect(() => {
     return () => {
       if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+      if (bgmRef.current) bgmRef.current.pause();
     };
   }, []);
 
@@ -711,6 +809,7 @@ export default function App() {
   };
 
   const pauseAllMusic = () => {
+    wasPlayingBeforeHideRef.current = false;
     if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
     if (bgmRef.current && !bgmRef.current.paused) {
       bgmRef.current.pause();
@@ -1019,6 +1118,16 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
       pointer-events: none;
     }
 
+    video::-webkit-media-controls,
+    video::-webkit-media-controls-panel,
+    video::-webkit-media-controls-play-button,
+    video::-webkit-media-controls-start-playback-button {
+      display: none !important;
+      -webkit-appearance: none !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+
     #musicBtn {
       position: fixed;
       right: 18px;
@@ -1215,13 +1324,22 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
         className="bg"
         autoPlay
         muted
+        defaultMuted
         loop
         playsInline
+        webkit-playsinline="true"
+        preload="auto"
+        disablePictureInPicture
+        controlsList="nodownload nofullscreen noremoteplayback"
+        onCanPlay={(e) => {
+          e.currentTarget.muted = true;
+          e.currentTarget.play().catch(() => {});
+        }}
       >
-        <source media="(orientation: portrait)" src={mediaUrls.phoneWebm} type="video/webm" />
         <source media="(orientation: portrait)" src={mediaUrls.phoneMp4} type="video/mp4" />
-        <source src={mediaUrls.desktopWebm} type="video/webm" />
+        <source media="(orientation: portrait)" src={mediaUrls.phoneWebm} type="video/webm" />
         <source src={mediaUrls.desktopMp4} type="video/mp4" />
+        <source src={mediaUrls.desktopWebm} type="video/webm" />
       </video>
 
       <audio id="bgm" ref={bgmRef} src={mediaUrls.bgmMp3} loop preload="none" />
@@ -1883,7 +2001,7 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
               className="mystic-font btn-magical"
               style={{ flex: 2, padding: '17px', fontSize: 'clamp(1.1rem, 2.5vw, 1.3rem)', minWidth: '210px' }}
             >
-              {loading ? 'Звезды говорят...' : 'РАСКИНУТЬ КАРТЫ'}
+              {loading ? 'Расшифровываю расклад..' : 'РАСКИНУТЬ КАРТЫ'}
             </button>
             <button
               onClick={() => performReading('Какой совет мне дадут карты на сегодняшний день?')}
