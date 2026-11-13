@@ -55,6 +55,69 @@ const FAL_KEY =
   (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FAL_KEY) ||
   'fal_sk_93501a40318d4047a6d3c501918eaae0:bfe0578b8aaf2c3b74dda9f90728e7d9';
 
+const getOrCreateSyncCode = () => {
+  try {
+    const existing = localStorage.getItem('tarot_flox_sync_code');
+    if (existing && existing.trim().length >= 4) {
+      return existing.trim().toUpperCase();
+    }
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let generated = 'FX';
+    for (let i = 0; i < 6; i++) {
+      generated += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    localStorage.setItem('tarot_flox_sync_code', generated);
+    return generated;
+  } catch (e) {
+    return 'FX777888';
+  }
+};
+
+const CLOUD_KV_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
+const CLOUD_APP_TOKEN = '4f9b2c8e';
+
+const pushHistoryToCloudKV = async (code, historyList) => {
+  if (!code) return;
+  try {
+    const safeKey = `tarot_flox_${code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')}`;
+    const slimHistory = (historyList || []).slice(0, 25).map((item) => ({
+      id: item.id,
+      date: item.date,
+      question: item.question,
+      cards: (item.cards || []).map((c) => ({ code: c.code, name: c.name })),
+      analysis: item.analysis,
+      advice: item.advice,
+      followUps: item.followUps || []
+    }));
+    const encoded = encodeURIComponent(JSON.stringify(slimHistory));
+    await fetch(`${CLOUD_KV_BASE}/UpdateValue/${CLOUD_APP_TOKEN}/${safeKey}/${encoded}`, {
+      method: 'POST'
+    });
+  } catch (e) {}
+};
+
+const pullHistoryFromCloudKV = async (code) => {
+  if (!code) return null;
+  try {
+    const safeKey = `tarot_flox_${code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')}`;
+    const res = await fetch(`${CLOUD_KV_BASE}/GetValue/${CLOUD_APP_TOKEN}/${safeKey}`);
+    if (!res.ok) return null;
+    const raw = await res.json();
+    if (!raw) return null;
+    const parsed = JSON.parse(decodeURIComponent(raw));
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => ({
+        ...item,
+        cards: (item.cards || []).map((c) => {
+          const fullCard = DECK.find((d) => d.code === c.code || d.name === c.name);
+          return fullCard || c;
+        })
+      }));
+    }
+  } catch (e) {}
+  return null;
+};
+
 const IS_SANDBOX_PREVIEW =
   typeof window !== 'undefined' &&
   (window.location.hostname.includes('googleusercontent') ||
@@ -111,10 +174,10 @@ const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
 };
 
 const SUITS = [
-  { id: 'wa', name: 'Жезлов', symbol: '🪄', color: '#e89b46' },
-  { id: 'cu', name: 'Кубков', symbol: '🏆', color: '#63b3ed' },
-  { id: 'sw', name: 'Мечей', symbol: '⚔️', color: '#cbd5e0' },
-  { id: 'pa', name: 'Пентаклей', symbol: '🪙', color: '#ecc94b' }
+  { id: 'wa', altId: 'wa', name: 'Жезлов', symbol: '🪄', color: '#e89b46' },
+  { id: 'cu', altId: 'cu', name: 'Кубков', symbol: '🏆', color: '#63b3ed' },
+  { id: 'sw', altId: 'sw', name: 'Мечей', symbol: '⚔️', color: '#cbd5e0' },
+  { id: 'pe', altId: 'pa', name: 'Пентаклей', symbol: '🪙', color: '#ecc94b' }
 ];
 
 const RANKS = [
@@ -173,18 +236,18 @@ const createFallbackCardDataUri = (title, subtitle, symbol = '✦', accent = '#e
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
-const buildCardUrls = (code) => [
-  `https://cdn.jsdelivr.net/gh/ekelen/tarot-api@master/static/cards/${code}.jpg`,
-  `https://raw.githubusercontent.com/ekelen/tarot-api/master/static/cards/${code}.jpg`,
-  `https://sacred-texts.com/tarot/pkt/img/${code}.jpg`,
-  `https://www.sacred-texts.com/tarot/pkt/img/${code}.jpg`
+const buildCardUrls = (primaryCode, secondaryCode = primaryCode) => [
+  `https://cdn.jsdelivr.net/gh/ekelen/tarot-api@master/static/cards/${primaryCode}.jpg`,
+  `https://raw.githubusercontent.com/ekelen/tarot-api/master/static/cards/${primaryCode}.jpg`,
+  `https://sacred-texts.com/tarot/pkt/img/${secondaryCode}.jpg`,
+  `https://www.sacred-texts.com/tarot/pkt/img/${secondaryCode}.jpg`
 ];
 
 const DECK = (() => {
   const deck = [];
   MAJORS.forEach((name, i) => {
     const code = `ar${i.toString().padStart(2, '0')}`;
-    const urls = buildCardUrls(code);
+    const urls = buildCardUrls(code, code);
     deck.push({
       code,
       name,
@@ -195,11 +258,12 @@ const DECK = (() => {
   });
   SUITS.forEach((suit) =>
     RANKS.forEach((rank) => {
-      const code = `${suit.id}${rank.code}`;
+      const primaryCode = `${suit.id}${rank.code}`;
+      const secondaryCode = `${suit.altId}${rank.code}`;
       const fullName = `${rank.name} ${suit.name}`;
-      const urls = buildCardUrls(code);
+      const urls = buildCardUrls(primaryCode, secondaryCode);
       deck.push({
-        code,
+        code: primaryCode,
         name: fullName,
         img: urls[0],
         urls,
@@ -310,13 +374,7 @@ export default function App() {
   const [followUpLoading, setFollowUpLoading] = useState(false);
 
   const [user, setUser] = useState(null);
-  const [syncCode, setSyncCode] = useState(() => {
-    try {
-      return localStorage.getItem('tarot_flox_sync_code') || '';
-    } catch (e) {
-      return '';
-    }
-  });
+  const [syncCode, setSyncCode] = useState(() => getOrCreateSyncCode());
   const [syncInput, setSyncInput] = useState('');
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [copiedSync, setCopiedSync] = useState(false);
@@ -381,16 +439,6 @@ export default function App() {
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      if (u) {
-        setSyncCode((prev) => {
-          if (prev) return prev;
-          const defaultCode = u.uid.slice(0, 8).toUpperCase();
-          try {
-            localStorage.setItem('tarot_flox_sync_code', defaultCode);
-          } catch (e) {}
-          return defaultCode;
-        });
-      }
     });
     return () => unsubscribe();
   }, []);
@@ -399,10 +447,36 @@ export default function App() {
     try {
       const savedLocal = localStorage.getItem('tarotHistory_flox_v2');
       if (savedLocal) {
-        setHistory(JSON.parse(savedLocal));
+        const parsed = JSON.parse(savedLocal);
+        setHistory(parsed);
+        if (parsed.length > 0 && syncCode) {
+          pushHistoryToCloudKV(syncCode, parsed);
+        }
       }
     } catch (e) {}
   }, []);
+
+  useEffect(() => {
+    if (!syncCode) return;
+    let active = true;
+    pullHistoryFromCloudKV(syncCode).then((cloudItems) => {
+      if (!active || !cloudItems || cloudItems.length === 0) return;
+      setHistory((prev) => {
+        const mergedMap = new Map();
+        [...cloudItems, ...prev].forEach((it) => {
+          if (it && it.id) mergedMap.set(it.id, it);
+        });
+        const merged = Array.from(mergedMap.values()).sort((a, b) => b.id - a.id);
+        try {
+          localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(merged));
+        } catch (e) {}
+        return merged;
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [syncCode]);
 
   useEffect(() => {
     if (!user || !db) return;
@@ -950,10 +1024,14 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
 
     .tarot-stage {
       position: relative;
-      width: min(100vw, 1400px);
+      width: 100%;
+      max-width: 1120px;
       aspect-ratio: 1920 / 1098;
       margin: 0 auto;
       user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .tarot-stage video,
     .tarot-stage img.fallback {
@@ -962,7 +1040,10 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
       width: 100%;
       height: 100%;
       object-fit: contain;
+      object-position: center center;
       pointer-events: none;
+      margin: 0 auto;
+      transform: translateX(1.3%);
     }
     .tarot-stage img.fallback {
       display: none;
@@ -984,9 +1065,9 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
 
     .tarot-spread {
       position: absolute;
-      left: 48.7%;
-      top: 48.8%;
-      width: 44%;
+      left: 50%;
+      top: 49%;
+      width: 46%;
       transform: translate(-50%, -50%);
       display: flex;
       flex-direction: row;
@@ -1006,11 +1087,11 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
 
     @media (max-width: 768px) {
       .tarot-stage {
-        width: 116%;
-        margin-left: -8%;
+        width: 112%;
+        margin-left: -6%;
       }
       .tarot-spread {
-        width: 52%;
+        width: 54%;
         gap: 1.5%;
       }
     }
