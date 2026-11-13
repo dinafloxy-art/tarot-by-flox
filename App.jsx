@@ -3,6 +3,10 @@ import {
   VolumeX,
   BookOpen,
   ChevronLeft,
+  Upload,
+  Film,
+  Music,
+  Check,
   X,
   Trash2,
   Send,
@@ -25,7 +29,6 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 
-// --- ИНИЦИАЛИЗАЦИЯ FIREBASE (ОБЛАЧНАЯ СИНХРОНИЗАЦИЯ ИСТОРИИ) ---
 let app = null;
 let auth = null;
 let db = null;
@@ -35,8 +38,6 @@ try {
   const rawConfig =
     typeof __firebase_config !== 'undefined' && __firebase_config
       ? __firebase_config
-      : typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_CONFIG
-      ? import.meta.env.VITE_FIREBASE_CONFIG
       : null;
   if (rawConfig) {
     const firebaseConfig = typeof rawConfig === 'string' ? JSON.parse(rawConfig) : rawConfig;
@@ -48,11 +49,8 @@ try {
   console.warn('Firebase init fallback:', e);
 }
 
-const FAL_KEY =
-  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FAL_KEY) ||
-  'fal_sk_93501a40318d4047a6d3c501918eaae0:bfe0578b8aaf2c3b74dda9f90728e7d9';
+const FAL_KEY = 'fal_sk_93501a40318d4047a6d3c501918eaae0:bfe0578b8aaf2c3b74dda9f90728e7d9';
 
-// Генерация гарантированного уникального кода синхронизации для каждого пользователя
 const getOrCreateSyncCode = () => {
   try {
     const existing = localStorage.getItem('tarot_flox_sync_code');
@@ -71,7 +69,6 @@ const getOrCreateSyncCode = () => {
   }
 };
 
-// Облачное KV-хранилище для синхронизации между телефоном и ПК на Vercel без настройки собственной БД
 const CLOUD_KV_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
 const CLOUD_APP_TOKEN = '4f9b2c8e';
 
@@ -117,7 +114,12 @@ const pullHistoryFromCloudKV = async (code) => {
   return null;
 };
 
-// Вызов мощной языковой модели (Claude 3.5 Sonnet с автоматическим фоллбэком на GPT-4o)
+const IS_SANDBOX_PREVIEW =
+  typeof window !== 'undefined' &&
+  (window.location.hostname.includes('googleusercontent') ||
+    window.location.hostname.includes('scf.usercontent') ||
+    window.location.protocol === 'blob:');
+
 const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
   const preferredModels = [
     'anthropic/claude-3.5-sonnet',
@@ -167,9 +169,6 @@ const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
   throw lastError || new Error('Не удалось получить ответ от модели');
 };
 
-// ТОЧНЫЕ КОДЫ ВСЕХ 78 КАРТ КОЛОДЫ РАЙДЕРА-УЭЙТА (PKT STANDARD):
-// Туз = ac, 2..10 = 02..10, Паж = pa, Рыцарь = kn, Королева = qu, Король = ki
-// Масти: Жезлы = wa, Кубки = cu, Мечи = sw, Пентакли = pe (CDN) / pa (sacred-texts)
 const SUITS = [
   { id: 'wa', altId: 'wa', name: 'Жезлов', symbol: '🪄', color: '#e89b46' },
   { id: 'cu', altId: 'cu', name: 'Кубков', symbol: '🏆', color: '#63b3ed' },
@@ -206,7 +205,6 @@ const ROMAN_MAJORS = [
   'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX', 'XXI'
 ];
 
-// Генерация встроенного золотого SVG-аркана (подстраховка, если у пользователя пропал интернет)
 const createFallbackCardDataUri = (title, subtitle, symbol = '✦', accent = '#e5b05c') => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 520" width="300" height="520">
     <defs>
@@ -355,6 +353,79 @@ const TarotCardImage = ({ card, style = {} }) => {
   );
 };
 
+const MobileMysticCloudBackdrop = () => (
+  <svg
+    viewBox="0 0 1200 720"
+    style={{
+      position: 'absolute',
+      inset: '-14% -10%',
+      width: '120%',
+      height: '128%',
+      objectFit: 'contain',
+      zIndex: -1,
+      pointerEvents: 'none',
+      filter: 'drop-shadow(0 22px 48px rgba(0, 0, 0, 0.9))'
+    }}
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <defs>
+      <radialGradient id="iosCloudCore" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stopColor="#efe6ff" stopOpacity="0.96" />
+        <stop offset="38%" stopColor="#b99ee0" stopOpacity="0.92" />
+        <stop offset="68%" stopColor="#6c4b9e" stopOpacity="0.88" />
+        <stop offset="88%" stopColor="#351c5c" stopOpacity="0.55" />
+        <stop offset="100%" stopColor="#160c28" stopOpacity="0" />
+      </radialGradient>
+      <radialGradient id="iosCloudPuff" cx="42%" cy="38%" r="58%">
+        <stop offset="0%" stopColor="#f7f2ff" stopOpacity="0.94" />
+        <stop offset="50%" stopColor="#aa8ed6" stopOpacity="0.82" />
+        <stop offset="82%" stopColor="#523485" stopOpacity="0.45" />
+        <stop offset="100%" stopColor="#241142" stopOpacity="0" />
+      </radialGradient>
+      <radialGradient id="iosInnerDark" cx="50%" cy="50%" r="48%">
+        <stop offset="0%" stopColor="#261347" stopOpacity="0.92" />
+        <stop offset="65%" stopColor="#3a1f69" stopOpacity="0.82" />
+        <stop offset="100%" stopColor="#5a388c" stopOpacity="0" />
+      </radialGradient>
+      <radialGradient id="iosGoldWarmth" cx="50%" cy="50%" r="45%">
+        <stop offset="0%" stopColor="#ffcc66" stopOpacity="0.38" />
+        <stop offset="65%" stopColor="#e59b38" stopOpacity="0.22" />
+        <stop offset="100%" stopColor="#e59b38" stopOpacity="0" />
+      </radialGradient>
+      <filter id="cloudBlur" x="-15%" y="-15%" width="130%" height="130%">
+        <feGaussianBlur stdDeviation="8" />
+      </filter>
+    </defs>
+
+    <g filter="url(#cloudBlur)">
+      <ellipse cx="600" cy="360" rx="520" ry="275" fill="url(#iosCloudCore)" />
+      {[
+        [240, 355, 165, 130],
+        [330, 235, 175, 125],
+        [500, 180, 210, 125],
+        [700, 185, 210, 125],
+        [870, 240, 175, 125],
+        [960, 360, 165, 130],
+        [865, 480, 185, 125],
+        [695, 535, 215, 125],
+        [505, 535, 215, 125],
+        [335, 475, 185, 125]
+      ].map(([cx, cy, rx, ry], idx) => (
+        <ellipse key={idx} cx={cx} cy={cy} rx={rx} ry={ry} fill="url(#iosCloudPuff)" />
+      ))}
+      <ellipse cx="600" cy="360" rx="430" ry="210" fill="url(#iosGoldWarmth)" />
+      <ellipse cx="600" cy="360" rx="385" ry="185" fill="url(#iosInnerDark)" />
+    </g>
+
+    {[
+      [195, 275, 3], [245, 465, 3.5], [385, 155, 3], [820, 160, 3.5],
+      [985, 270, 3], [965, 475, 3.5], [790, 565, 3], [415, 560, 3.5]
+    ].map(([x, y, r], i) => (
+      <circle key={i} cx={x} cy={y} r={r} fill="#ffe5a3" opacity="0.85" />
+    ))}
+  </svg>
+);
+
 export default function App() {
   const [view, setView] = useState('landing');
   const [cards, setCards] = useState([]);
@@ -383,7 +454,6 @@ export default function App() {
 
   const [tableNoAlpha, setTableNoAlpha] = useState(false);
 
-  // Точные пути к вашим реальным файлам
   const mediaUrls = {
     phoneWebm: '/phone-loop-muted.webm',
     phoneMp4: '/phone-loop-muted.mp4',
@@ -424,7 +494,6 @@ export default function App() {
     };
   }, []);
 
-  // Авторизация Firebase
   useEffect(() => {
     if (!auth) return;
     const initAuth = async () => {
@@ -445,7 +514,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // История раскладов (локальная + облачная синхронизация по коду)
   useEffect(() => {
     try {
       const savedLocal = localStorage.getItem('tarotHistory_flox_v2');
@@ -459,7 +527,6 @@ export default function App() {
     } catch (e) {}
   }, []);
 
-  // Подтягивание истории из облака при смене/наличии кода синхронизации
   useEffect(() => {
     if (!syncCode) return;
     let active = true;
@@ -550,7 +617,7 @@ export default function App() {
   }, [user, syncCode]);
 
   const saveReadingToStorage = async (readingObj) => {
-    const codeUpper = (syncCode || getOrCreateSyncCode()).trim().toUpperCase();
+    const codeUpper = (syncCode || (user ? user.uid.slice(0, 8) : 'FLOX')).trim().toUpperCase();
     const itemToSave = { ...readingObj, syncCode: codeUpper };
 
     setHistory((prev) => {
@@ -559,7 +626,6 @@ export default function App() {
       try {
         localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(updated));
       } catch (e) {}
-      pushHistoryToCloudKV(codeUpper, updated);
       return updated;
     });
 
@@ -576,14 +642,12 @@ export default function App() {
 
   const deleteHistoryItem = async (id, e) => {
     if (e) e.stopPropagation();
-    const codeUpper = (syncCode || getOrCreateSyncCode()).trim().toUpperCase();
 
     setHistory((prev) => {
       const updated = prev.filter((item) => item.id !== id);
       try {
         localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(updated));
       } catch (err) {}
-      pushHistoryToCloudKV(codeUpper, updated);
       return updated;
     });
 
@@ -594,6 +658,7 @@ export default function App() {
 
     if (user && db) {
       const docId = String(id);
+      const codeUpper = (syncCode || user.uid.slice(0, 8)).trim().toUpperCase();
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'readings', docId));
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'readings_by_code', `${codeUpper}_${docId}`));
@@ -603,7 +668,6 @@ export default function App() {
     }
   };
 
-  // Проверка Safari / iPhone для прозрачности WebM
   useEffect(() => {
     const ua = navigator.userAgent || '';
     const webkitOnly =
@@ -682,7 +746,6 @@ export default function App() {
     };
 
     const handleWindowBlur = () => {
-      // На мобильных устройствах при уходе в фон или блокировке экрана останавливаем звук
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '')) {
         if (bgmRef.current && !bgmRef.current.paused) {
           wasPlayingBeforeHideRef.current = true;
@@ -890,7 +953,7 @@ export default function App() {
 3. Четкий итоговый вывод без воды.
 
 ОБЯЗАТЕЛЬНО В САМОМ КОНЦЕ:
-Добавь строку "ГЛАВНЫЙ СОВЕТ:" и напиши 2-3 четких, конкретных, практических действия в повелительном наклонении (что человеку реально предпринять, проверить или сделать), без абстрактной философии.`;
+Добавь строку "ГЛАВНЫЙ СОВЕТ:" и напиши 2-3 четких, конкретных, практических действия в повелительном наклонении.`;
 
       const fullPrompt = `ВОПРОС ПОЛЬЗОВАТЕЛЯ: "${actualQuestion}"
 ВЫПАВШИЕ 5 КАРТ НА СТОЛЕ (слева направо):
@@ -900,7 +963,7 @@ export default function App() {
 4. ${selected[3].name}
 5. ${selected[4].name}
 
-Сделай глубокий, проницательный профессиональный синтез этих 5 карт СТРОГО в контексте вопроса "${actualQuestion}". Переведи символику каждой карты и их связок непосредственно на предмет вопроса (без книжных шаблонов, без решеток ### и без любых предупреждений). В конце выдели блок "ГЛАВНЫЙ СОВЕТ:".`;
+Сделай глубокий, проницательный профессиональный синтез этих 5 карт СТРОГО в контексте вопроса "${actualQuestion}". В конце выдели блок "ГЛАВНЫЙ СОВЕТ:".`;
 
       const rawText = await requestDeepTarotLLM({
         cleanKey,
@@ -1048,7 +1111,7 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
     setView('historyDetail');
   };
 
-  const applyCustomSyncCode = async () => {
+  const applyCustomSyncCode = () => {
     const clean = syncInput.trim().toUpperCase();
     if (clean.length < 3) return;
     setSyncCode(clean);
@@ -1057,21 +1120,6 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
     } catch (e) {}
     setSyncInput('');
     setShowSyncModal(false);
-
-    const cloudItems = await pullHistoryFromCloudKV(clean);
-    if (cloudItems && cloudItems.length > 0) {
-      setHistory((prev) => {
-        const mergedMap = new Map();
-        [...cloudItems, ...prev].forEach((it) => {
-          if (it && it.id) mergedMap.set(it.id, it);
-        });
-        const merged = Array.from(mergedMap.values()).sort((a, b) => b.id - a.id);
-        try {
-          localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(merged));
-        } catch (e) {}
-        return merged;
-      });
-    }
   };
 
   const copySyncCode = () => {
@@ -1152,6 +1200,34 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
       box-shadow: 0 0 35px rgba(229, 176, 92, 0.9);
     }
 
+    .music-hint-badge {
+      position: fixed;
+      right: 78px;
+      bottom: 22px;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, rgba(32, 14, 62, 0.94), rgba(92, 60, 20, 0.94));
+      border: 1.5px solid #e5b05c;
+      color: #ffe3a8;
+      padding: 8px 16px;
+      border-radius: 30px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      box-shadow: 0 0 22px rgba(229, 176, 92, 0.55);
+      animation: musicHintBob 1.8s ease-in-out infinite;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    @keyframes musicHintBob {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(-7px); }
+    }
+
     .tarot-stage {
       position: relative;
       width: 100%;
@@ -1224,10 +1300,6 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
         width: 54%;
         gap: 1.5%;
       }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .tarot-stage img.fallback { animation: none; }
     }
 
     @keyframes pulse-gold {
@@ -1319,28 +1391,41 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
     <>
       <style>{globalStyles}</style>
 
-      <video
-        ref={videoRef}
-        className="bg"
-        autoPlay
-        muted
-        defaultMuted
-        loop
-        playsInline
-        webkit-playsinline="true"
-        preload="auto"
-        disablePictureInPicture
-        controlsList="nodownload nofullscreen noremoteplayback"
-        onCanPlay={(e) => {
-          e.currentTarget.muted = true;
-          e.currentTarget.play().catch(() => {});
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          zIndex: -1,
+          pointerEvents: 'none',
+          overflow: 'hidden',
+          background: 'radial-gradient(circle at 50% 40%, #241445 0%, #120924 60%, #070312 100%)'
         }}
-      >
-        <source media="(orientation: portrait)" src={mediaUrls.phoneMp4} type="video/mp4" />
-        <source media="(orientation: portrait)" src={mediaUrls.phoneWebm} type="video/webm" />
-        <source src={mediaUrls.desktopMp4} type="video/mp4" />
-        <source src={mediaUrls.desktopWebm} type="video/webm" />
-      </video>
+        dangerouslySetInnerHTML={{
+          __html: `
+            <video
+              id="bgVideoEl"
+              class="bg"
+              autoplay
+              muted
+              defaultMuted
+              loop
+              playsinline
+              webkit-playsinline="true"
+              preload="auto"
+              disablepictureinpicture
+              style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;pointer-events:none;"
+            >
+              <source media="(orientation: portrait)" src="${mediaUrls.phoneMp4}" type="video/mp4" />
+              <source media="(orientation: portrait)" src="${mediaUrls.phoneWebm}" type="video/webm" />
+              <source src="${mediaUrls.desktopMp4}" type="video/mp4" />
+              <source src="${mediaUrls.desktopWebm}" type="video/webm" />
+            </video>
+          `
+        }}
+      />
 
       <audio id="bgm" ref={bgmRef} src={mediaUrls.bgmMp3} loop preload="none" />
       <audio
@@ -1349,6 +1434,17 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
         crossOrigin="anonymous"
         preload="auto"
       />
+
+      {!musicPlaying && (
+        <div
+          onClick={toggleMusic}
+          className="music-hint-badge mystic-font"
+          title="Нажмите, чтобы включить космическую музыку"
+        >
+          <span>Нажми</span>
+          <span style={{ fontSize: '1.35rem', lineHeight: 1 }}>➔</span>
+        </div>
+      )}
 
       <button
         id="musicBtn"
@@ -1482,36 +1578,25 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
             zIndex: 2,
             textAlign: 'center',
             width: 'min(96vw, 920px)',
+            minHeight: '360px',
             aspectRatio: '16 / 10',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 'clamp(2rem, 5vw, 4rem)',
+            padding: 'clamp(1.8rem, 5vw, 4rem)',
             animation: view === 'transition' ? 'disperse 1.2s forwards' : 'tarot-sway 6s ease-in-out infinite'
           }}
         >
-          {/* Мягкое магическое свечение позади облака */}
-          <div
-            style={{
-              position: 'absolute',
-              inset: '12% 10%',
-              borderRadius: '50%',
-              background:
-                'radial-gradient(ellipse at center, rgba(48, 22, 88, 0.82) 0%, rgba(76, 38, 128, 0.52) 48%, rgba(22, 12, 40, 0) 76%)',
-              filter: 'blur(18px)',
-              zIndex: -2,
-              pointerEvents: 'none'
-            }}
-          />
+          <MobileMysticCloudBackdrop />
 
-          {/* Настоящее видео-облако cloud-loop-alpha.webm без квадратной рамки */}
           {!tableNoAlpha && (
             <video
               autoPlay
               muted
               loop
               playsInline
+              webkit-playsinline="true"
               preload="auto"
               src={mediaUrls.adviceCloudWebm}
               style={{
@@ -1627,11 +1712,6 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
                   <X size={18} />
                 </button>
               </div>
-              <p style={{ margin: '0 0 14px 0', color: '#e2d6f5', fontSize: '1.08rem', lineHeight: 1.45 }}>
-                Ваши расклады автоматически сохраняются в облаке за вашим кодом{' '}
-                <strong style={{ color: '#ffe3a8' }}>{syncCode}</strong>. Чтобы открыть эту же историю на другом устройстве
-                (например, на iPhone или компьютере), введите этот код там:
-              </p>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <button
                   onClick={copySyncCode}
@@ -1856,22 +1936,26 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
           </div>
 
           <div className="advice-cloud-box text-font">
-            <video
-              autoPlay
-              muted
-              loop
-              playsInline
-              src={mediaUrls.adviceCloudWebm}
-              style={{
-                position: 'absolute',
-                inset: '-18% -12%',
-                width: '124%',
-                height: '136%',
-                objectFit: 'contain',
-                zIndex: -1,
-                pointerEvents: 'none'
-              }}
-            />
+            <MobileMysticCloudBackdrop />
+            {!tableNoAlpha && (
+              <video
+                autoPlay
+                muted
+                loop
+                playsInline
+                webkit-playsinline="true"
+                src={mediaUrls.adviceCloudWebm}
+                style={{
+                  position: 'absolute',
+                  inset: '-18% -12%',
+                  width: '124%',
+                  height: '136%',
+                  objectFit: 'contain',
+                  zIndex: -1,
+                  pointerEvents: 'none'
+                }}
+              />
+            )}
             <div
               className="mystic-font"
               style={{
@@ -1976,7 +2060,7 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
           <input
             className="text-font"
             type="text"
-            placeholder="Что вас волнует? (оставьте пустым для общего расклада)"
+            placeholder="Задай сокровенный вопрос"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={(e) => {
@@ -2136,22 +2220,26 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
 
               {mainAdvice && (
                 <div className="advice-cloud-box text-font">
-                  <video
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
-                    src={mediaUrls.adviceCloudWebm}
-                    style={{
-                      position: 'absolute',
-                      inset: '-18% -12%',
-                      width: '124%',
-                      height: '136%',
-                      objectFit: 'contain',
-                      zIndex: -1,
-                      pointerEvents: 'none'
-                    }}
-                  />
+                  <MobileMysticCloudBackdrop />
+                  {!tableNoAlpha && (
+                    <video
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      webkit-playsinline="true"
+                      src={mediaUrls.adviceCloudWebm}
+                      style={{
+                        position: 'absolute',
+                        inset: '-18% -12%',
+                        width: '124%',
+                        height: '136%',
+                        objectFit: 'contain',
+                        zIndex: -1,
+                        pointerEvents: 'none'
+                      }}
+                    />
+                  )}
                   <div
                     className="mystic-font"
                     style={{
