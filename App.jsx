@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Volume2,
   VolumeX,
   BookOpen,
   ChevronLeft,
@@ -30,7 +29,6 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 
-// --- ИНИЦИАЛИЗАЦИЯ FIREBASE (ОБЛАЧНАЯ СИНХРОНИЗАЦИЯ ИСТОРИИ) ---
 let app = null;
 let auth = null;
 let db = null;
@@ -57,14 +55,12 @@ const FAL_KEY =
   (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FAL_KEY) ||
   'fal_sk_93501a40318d4047a6d3c501918eaae0:bfe0578b8aaf2c3b74dda9f90728e7d9';
 
-// Автоматическое определение: запущен ли сайт внутри песочницы превью или уже опубликован на Vercel
 const IS_SANDBOX_PREVIEW =
   typeof window !== 'undefined' &&
   (window.location.hostname.includes('googleusercontent') ||
     window.location.hostname.includes('scf.usercontent') ||
     window.location.protocol === 'blob:');
 
-// Вызов мощной языковой модели (Claude 3.5 Sonnet с автоматическим фоллбэком на GPT-4o)
 const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
   const preferredModels = [
     'anthropic/claude-3.5-sonnet',
@@ -114,9 +110,6 @@ const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
   throw lastError || new Error('Не удалось получить ответ от модели');
 };
 
-// ТОЧНЫЕ КОДЫ ВСЕХ 78 КАРТ КОЛОДЫ РАЙДЕРА-УЭЙТА (PKT STANDARD):
-// Туз = ac, 2..10 = 02..10, Паж = pa, Рыцарь = kn, Королева = qu, Король = ki
-// Масти: Жезлы = wa, Кубки = cu, Мечи = sw, Пентакли = pa
 const SUITS = [
   { id: 'wa', name: 'Жезлов', symbol: '🪄', color: '#e89b46' },
   { id: 'cu', name: 'Кубков', symbol: '🏆', color: '#63b3ed' },
@@ -153,7 +146,6 @@ const ROMAN_MAJORS = [
   'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX', 'XXI'
 ];
 
-// Генерация встроенного золотого SVG-аркана (мгновенная подстраховка, чтобы НИКОГДА не было битой иконки)
 const createFallbackCardDataUri = (title, subtitle, symbol = '✦', accent = '#e5b05c') => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 520" width="300" height="520">
     <defs>
@@ -181,7 +173,6 @@ const createFallbackCardDataUri = (title, subtitle, symbol = '✦', accent = '#e
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
-// Формирование всех 78 карт с несколькими быстрыми CDN-зеркалами + встроенным векторным арканом
 const buildCardUrls = (code) => [
   `https://cdn.jsdelivr.net/gh/ekelen/tarot-api@master/static/cards/${code}.jpg`,
   `https://raw.githubusercontent.com/ekelen/tarot-api/master/static/cards/${code}.jpg`,
@@ -219,7 +210,6 @@ const DECK = (() => {
   return deck;
 })();
 
-// Глобальный кэш предзагруженных URL картинок, чтобы все 78 карт открывались мгновенно за 0 мс
 const RESOLVED_CARD_CACHE = new Map();
 
 const preloadSingleCard = (card) => {
@@ -250,7 +240,6 @@ const preloadSingleCard = (card) => {
   });
 };
 
-// Компонент безотказной отрисовки карты Таро
 const TarotCardImage = ({ card, style = {} }) => {
   const cardInDeck = DECK.find((d) => d.name === card?.name || d.code === card?.code) || card;
   const candidates = cardInDeck?.urls || (card?.img ? [card.img] : []);
@@ -304,223 +293,6 @@ const TarotCardImage = ({ card, style = {} }) => {
   );
 };
 
-// Ультра-детализированный SVG-дубликат вашего стола на фиолетово-серебристом облаке
-const FloatingTableOnCloudSVG = ({ className = '', style = {} }) => (
-  <svg
-    viewBox="0 0 1920 1098"
-    className={className}
-    style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none', ...style }}
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <defs>
-      <radialGradient id="cloudMain" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stopColor="#e8dff5" stopOpacity="0.98" />
-        <stop offset="45%" stopColor="#b79fd9" stopOpacity="0.95" />
-        <stop offset="72%" stopColor="#6c4d9c" stopOpacity="0.88" />
-        <stop offset="90%" stopColor="#3c2266" stopOpacity="0.45" />
-        <stop offset="100%" stopColor="#160c28" stopOpacity="0" />
-      </radialGradient>
-      <radialGradient id="cloudPuffLight" cx="40%" cy="35%" r="60%">
-        <stop offset="0%" stopColor="#f5effc" stopOpacity="0.95" />
-        <stop offset="55%" stopColor="#ae94d4" stopOpacity="0.85" />
-        <stop offset="100%" stopColor="#4f337d" stopOpacity="0" />
-      </radialGradient>
-      <radialGradient id="cloudGoldGlow" cx="50%" cy="50%" r="48%">
-        <stop offset="55%" stopColor="#ffcc66" stopOpacity="0.45" />
-        <stop offset="78%" stopColor="#d4882a" stopOpacity="0.25" />
-        <stop offset="100%" stopColor="#d4882a" stopOpacity="0" />
-      </radialGradient>
-      <radialGradient id="woodOuter" cx="48%" cy="46%" r="52%">
-        <stop offset="0%" stopColor="#7a4928" />
-        <stop offset="55%" stopColor="#563018" />
-        <stop offset="85%" stopColor="#3d200e" />
-        <stop offset="100%" stopColor="#241105" />
-      </radialGradient>
-      <radialGradient id="woodInner" cx="46%" cy="44%" r="50%">
-        <stop offset="0%" stopColor="#8c5530" />
-        <stop offset="45%" stopColor="#6e3f20" />
-        <stop offset="85%" stopColor="#4c2912" />
-        <stop offset="100%" stopColor="#331908" />
-      </radialGradient>
-      <radialGradient id="amethystGrad" cx="40%" cy="40%" r="60%">
-        <stop offset="0%" stopColor="#e0b3ff" />
-        <stop offset="45%" stopColor="#9933ff" />
-        <stop offset="85%" stopColor="#4b0082" />
-        <stop offset="100%" stopColor="#1f0036" />
-      </radialGradient>
-      <radialGradient id="crystalOrb" cx="35%" cy="30%" r="65%">
-        <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
-        <stop offset="25%" stopColor="#e2cbf7" stopOpacity="0.85" />
-        <stop offset="65%" stopColor="#8a5cb8" stopOpacity="0.75" />
-        <stop offset="100%" stopColor="#381c57" stopOpacity="0.95" />
-      </radialGradient>
-      <radialGradient id="candleFlame" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stopColor="#ffffff" />
-        <stop offset="35%" stopColor="#ffe596" />
-        <stop offset="70%" stopColor="#ff9d2e" stopOpacity="0.85" />
-        <stop offset="100%" stopColor="#ff6a00" stopOpacity="0" />
-      </radialGradient>
-      <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="22" stdDeviation="28" floodColor="#090314" floodOpacity="0.85" />
-      </filter>
-      <filter id="itemShadow" x="-30%" y="-30%" width="160%" height="160%">
-        <feDropShadow dx="0" dy="6" stdDeviation="6" floodColor="#000000" floodOpacity="0.75" />
-      </filter>
-    </defs>
-
-    <g>
-      <ellipse cx="960" cy="560" rx="790" ry="430" fill="url(#cloudMain)" />
-      {[
-        [370, 520, 230, 185], [460, 340, 220, 175], [680, 230, 250, 170],
-        [960, 195, 280, 160], [1240, 240, 250, 175], [1460, 360, 230, 180],
-        [1540, 550, 240, 195], [1430, 740, 240, 180], [1210, 860, 260, 175],
-        [950, 895, 290, 165], [670, 855, 260, 175], [460, 730, 235, 180],
-        [290, 600, 180, 145], [1620, 620, 175, 140]
-      ].map(([cx, cy, rx, ry], i) => (
-        <ellipse key={i} cx={cx} cy={cy} rx={rx} ry={ry} fill="url(#cloudPuffLight)" />
-      ))}
-      <circle cx="936" cy="536" r="445" fill="url(#cloudGoldGlow)" />
-      {[
-        [240, 420, 3.5], [285, 690, 4], [420, 890, 3], [590, 955, 4.5],
-        [1360, 920, 3.5], [1590, 780, 4], [1680, 460, 3.5], [1490, 220, 4],
-        [520, 195, 3.5], [820, 130, 3], [1140, 145, 4], [330, 310, 3]
-      ].map(([x, y, r], idx) => (
-        <circle key={idx} cx={x} cy={y} r={r} fill="#ffe194" opacity="0.85" />
-      ))}
-    </g>
-
-    <g filter="url(#softShadow)">
-      <circle cx="935" cy="536" r="355" fill="url(#woodOuter)" stroke="#2b1406" strokeWidth="8" />
-      <circle cx="935" cy="536" r="342" fill="none" stroke="#9c6b3b" strokeWidth="6" strokeDasharray="16 10" opacity="0.55" />
-      <circle cx="935" cy="536" r="330" fill="none" stroke="#301708" strokeWidth="4" />
-      <circle cx="935" cy="536" r="245" fill="none" stroke="#d9a752" strokeWidth="2.5" opacity="0.8" />
-      <circle cx="935" cy="536" r="222" fill="url(#woodInner)" stroke="#e5b563" strokeWidth="2.5" opacity="0.95" />
-      {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((deg) => {
-        const rad = (deg * Math.PI) / 180;
-        const x1 = 935 + Math.cos(rad) * 245;
-        const y1 = 536 + Math.sin(rad) * 245;
-        const x2 = 935 + Math.cos(rad) * 330;
-        const y2 = 536 + Math.sin(rad) * 330;
-        return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#2a1306" strokeWidth="2" opacity="0.65" />;
-      })}
-      <ellipse cx="935" cy="536" rx="190" ry="165" fill="none" stroke="#42220d" strokeWidth="2" opacity="0.4" />
-      <ellipse cx="935" cy="542" rx="145" ry="120" fill="none" stroke="#42220d" strokeWidth="1.5" opacity="0.35" />
-    </g>
-
-    <g filter="url(#itemShadow)">
-      <g transform="translate(735, 325) rotate(-38)">
-        <rect x="-36" y="-54" width="76" height="112" rx="7" fill="#d49b3b" />
-        <rect x="-39" y="-57" width="76" height="112" rx="7" fill="#f2c96d" />
-        <rect x="-42" y="-60" width="76" height="112" rx="7" fill="#2c1d52" stroke="#e8ba5a" strokeWidth="3" />
-        <rect x="-35" y="-53" width="62" height="98" rx="4" fill="none" stroke="#e8ba5a" strokeWidth="1" opacity="0.7" />
-      </g>
-      {[
-        [935, 246],
-        [935, 818],
-        [635, 518],
-        [1230, 518]
-      ].map(([cx, cy], idx) => (
-        <g key={idx} transform={`translate(${cx}, ${cy})`}>
-          <circle cx="0" cy="0" r="24" fill="#a86e3b" stroke="#4a280d" strokeWidth="2" />
-          <circle cx="0" cy="0" r="19" fill="#fae2b8" />
-          <circle cx="0" cy="0" r="26" fill="url(#candleFlame)" />
-          <circle cx="0" cy="-2" r="6" fill="#ffffff" />
-        </g>
-      ))}
-      {[
-        { x: 792, y: 274, rot: -20, glyph: 'ᚠ' },
-        { x: 826, y: 298, rot: 15, glyph: 'ᚢ' },
-        { x: 853, y: 256, rot: -10, glyph: 'ᚦ' },
-        { x: 883, y: 242, rot: 8, glyph: 'ᚨ' },
-        { x: 1002, y: 256, rot: 18, glyph: 'ᚱ' },
-        { x: 1208, y: 452, rot: -25, glyph: 'ᚷ' },
-        { x: 642, y: 604, rot: 14, glyph: 'ᚹ' },
-        { x: 678, y: 615, rot: -18, glyph: 'ᚺ' },
-        { x: 662, y: 648, rot: 25, glyph: 'ᚾ' },
-        { x: 885, y: 812, rot: 5, glyph: 'ᛟ' }
-      ].map((r, i) => (
-        <g key={i} transform={`translate(${r.x}, ${r.y}) rotate(${r.rot})`}>
-          <ellipse cx="0" cy="0" rx="14" ry="18" fill="#deb37c" stroke="#6e4720" strokeWidth="2" />
-          <text x="0" y="6" textAnchor="middle" fill="#fff3cf" fontSize="18" fontWeight="bold" style={{ fontFamily: 'serif' }}>
-            {r.glyph}
-          </text>
-        </g>
-      ))}
-      <g transform="translate(1148, 326)">
-        <circle cx="0" cy="0" r="34" fill="url(#crystalOrb)" stroke="#d9b8ff" strokeWidth="1.5" />
-        <ellipse cx="-12" cy="-12" rx="10" ry="6" transform="rotate(-30 -12 -12)" fill="#ffffff" opacity="0.7" />
-      </g>
-      {[
-        { x: 1090, y: 280, scale: 0.9, rot: 15 },
-        { x: 1212, y: 598, scale: 1.0, rot: -20 },
-        { x: 710, y: 705, scale: 1.15, rot: 30 }
-      ].map((am, i) => (
-        <g key={i} transform={`translate(${am.x}, ${am.y}) rotate(${am.rot}) scale(${am.scale})`}>
-          <polygon points="-28,10 -18,-25 5,-32 28,-12 22,22 -10,28" fill="#2e084f" />
-          <polygon points="-20,5 -12,-22 4,-20 0,8" fill="url(#amethystGrad)" stroke="#e6ccff" strokeWidth="0.8" />
-          <polygon points="0,-18 18,-24 24,0 6,12" fill="url(#amethystGrad)" stroke="#e6ccff" strokeWidth="0.8" />
-          <polygon points="-14,10 6,2 18,18 -4,24" fill="url(#amethystGrad)" stroke="#e6ccff" strokeWidth="0.8" />
-          <polygon points="-6,-8 8,-10 10,6 -4,6" fill="#f3e6ff" opacity="0.75" />
-        </g>
-      ))}
-      <g transform="translate(1142, 702) rotate(22)">
-        <circle cx="0" cy="0" r="54" fill="#9e7a36" stroke="#f5d27a" strokeWidth="3" />
-        <circle cx="0" cy="0" r="44" fill="#785920" stroke="#d4af5a" strokeWidth="1.5" strokeDasharray="6 4" />
-        <circle cx="0" cy="0" r="26" fill="none" stroke="#f5d27a" strokeWidth="2" />
-        <line x1="-48" y1="0" x2="48" y2="0" stroke="#f5d27a" strokeWidth="2" />
-        <line x1="0" y1="-48" x2="0" y2="48" stroke="#f5d27a" strokeWidth="2" />
-        <polygon points="0,-38 6,-8 0,38 -6,-8" fill="#ffe299" />
-        <circle cx="0" cy="0" r="6" fill="#fff2cc" />
-      </g>
-      <g stroke="#8c7a5b" strokeWidth="2" fill="none" opacity="0.85">
-        <path d="M645,445 Q670,410 695,380 M655,448 Q675,420 705,395" />
-        <path d="M1185,375 Q1200,405 1190,435 M1198,382 Q1210,410 1205,438" />
-        <path d="M1010,795 Q1045,785 1075,765 M1018,805 Q1050,795 1082,778" />
-      </g>
-    </g>
-  </svg>
-);
-
-// SVG-дубликат парящего мистического облака для блока "Главный совет"
-const AdviceCloudBackdropSVG = () => (
-  <svg
-    viewBox="0 0 1200 560"
-    style={{
-      position: 'absolute',
-      inset: '-12% -8%',
-      width: '116%',
-      height: '124%',
-      objectFit: 'fill',
-      zIndex: -1,
-      pointerEvents: 'none',
-      filter: 'drop-shadow(0 20px 45px rgba(0,0,0,0.85))'
-    }}
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <defs>
-      <radialGradient id="adviceCloudGrad" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stopColor="#3b2366" stopOpacity="0.96" />
-        <stop offset="58%" stopColor="#261547" stopOpacity="0.94" />
-        <stop offset="85%" stopColor="#4c2c7a" stopOpacity="0.75" />
-        <stop offset="100%" stopColor="#160c28" stopOpacity="0" />
-      </radialGradient>
-      <radialGradient id="adviceRimGlow" cx="50%" cy="50%" r="48%">
-        <stop offset="0%" stopColor="#e5b05c" stopOpacity="0.25" />
-        <stop offset="70%" stopColor="#a855f7" stopOpacity="0.35" />
-        <stop offset="100%" stopColor="#a855f7" stopOpacity="0" />
-      </radialGradient>
-    </defs>
-    <ellipse cx="600" cy="280" rx="560" ry="245" fill="url(#adviceRimGlow)" />
-    {[
-      [220, 280, 170, 145], [340, 175, 195, 135], [600, 145, 260, 130],
-      [860, 175, 195, 135], [980, 280, 170, 145], [860, 390, 205, 135],
-      [600, 415, 270, 130], [340, 390, 205, 135], [600, 280, 450, 195]
-    ].map(([cx, cy, rx, ry], i) => (
-      <ellipse key={i} cx={cx} cy={cy} rx={rx} ry={ry} fill="url(#adviceCloudGrad)" />
-    ))}
-  </svg>
-);
-
 export default function App() {
   const [view, setView] = useState('landing');
   const [cards, setCards] = useState([]);
@@ -532,13 +304,11 @@ export default function App() {
   const [musicPlaying, setMusicPlaying] = useState(false);
   const [musicVolume, setMusicVolume] = useState(0);
 
-  // Состояние текущего расклада и уточняющих вопросов (ветка расклада)
   const [currentReadingId, setCurrentReadingId] = useState(null);
   const [followUps, setFollowUps] = useState([]);
   const [followUpInput, setFollowUpInput] = useState('');
   const [followUpLoading, setFollowUpLoading] = useState(false);
 
-  // История раскладов и синхронизация между ПК и телефоном
   const [user, setUser] = useState(null);
   const [syncCode, setSyncCode] = useState(() => {
     try {
@@ -555,27 +325,19 @@ export default function App() {
   const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Автоопределение Safari / iOS для прозрачности WebM
   const [tableNoAlpha, setTableNoAlpha] = useState(false);
-  const [tableVideoReady, setTableVideoReady] = useState(false);
-  const [cloudVideoReady, setCloudVideoReady] = useState(false);
 
-  // Пути к вашим медиафайлам в папке public/
-  const [mediaUrls, setMediaUrls] = useState({
+  const mediaUrls = {
     phoneWebm: '/phone-loop-muted.webm',
     phoneMp4: '/phone-loop-muted.mp4',
     desktopWebm: '/desktop-loop-muted.webm',
     desktopMp4: '/desktop-loop-muted.mp4',
     bgmMp3: '/tarot-ambient-loop.mp3',
     tableWebm: '/table-cloud-loop.webm',
-    tableWebp: '/table-on-cloud.jpg',
+    tableWebp: '/table-on-cloud.webp',
     adviceCloudWebm: '/cloud-loop-alpha.webm'
-  });
-  const [customBgVideoLoaded, setCustomBgVideoLoaded] = useState(false);
-  const [customAudioLoaded, setCustomAudioLoaded] = useState(false);
-  const [showMediaDrawer, setShowMediaDrawer] = useState(false);
+  };
 
-  const canvasRef = useRef(null);
   const videoRef = useRef(null);
   const tableVideoRef = useRef(null);
   const bgmRef = useRef(null);
@@ -586,10 +348,7 @@ export default function App() {
   const followUpEndRef = useRef(null);
 
   const audioCtxRef = useRef(null);
-  const synthMasterGainRef = useRef(null);
-  const synthMelodyTimerRef = useRef(null);
 
-  // --- МГНОВЕННАЯ ФОНОВАЯ ПРЕДЗАГРУЗКА ВСЕХ 78 КАРТ ПРИ ВХОДЕ В ПРИЛОЖЕНИЕ ---
   useEffect(() => {
     let cancelled = false;
     const preloadAllCards = async () => {
@@ -606,7 +365,6 @@ export default function App() {
     };
   }, []);
 
-  // --- 1. АВТОРИЗАЦИЯ FIREBASE ---
   useEffect(() => {
     if (!auth) return;
     const initAuth = async () => {
@@ -637,7 +395,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // --- 2. ЗАГРУЗКА И СИНХРОНИЗАЦИЯ ИСТОРИИ (FIRESTORE + LOCALSTORAGE) ---
   useEffect(() => {
     try {
       const savedLocal = localStorage.getItem('tarotHistory_flox_v2');
@@ -766,7 +523,6 @@ export default function App() {
     }
   };
 
-  // --- 3. ПРОВЕРКА SAFARI / iOS ДЛЯ СТОЛА НА ОБЛАКЕ ---
   useEffect(() => {
     const ua = navigator.userAgent || '';
     const webkitOnly =
@@ -785,46 +541,8 @@ export default function App() {
   useEffect(() => {
     return () => {
       if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
-      if (synthMelodyTimerRef.current) clearInterval(synthMelodyTimerRef.current);
     };
   }, []);
-
-  const handleFileUpload = (key, e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setMediaUrls((prev) => ({ ...prev, [key]: url }));
-
-    if (key === 'bgmMp3') {
-      setCustomAudioLoaded(true);
-      stopFallbackSynth();
-      setTimeout(() => {
-        if (bgmRef.current) {
-          bgmRef.current.load();
-          if (musicPlaying) startMusicWithFade();
-        }
-      }, 100);
-    } else if (key === 'tableWebm') {
-      setTableNoAlpha(false);
-      setTableVideoReady(true);
-      setTimeout(() => {
-        if (tableVideoRef.current) {
-          tableVideoRef.current.load();
-          tableVideoRef.current.play().catch(() => {});
-        }
-      }, 100);
-    } else if (key === 'adviceCloudWebm') {
-      setCloudVideoReady(true);
-    } else {
-      setCustomBgVideoLoaded(true);
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.load();
-          videoRef.current.play().catch(() => {});
-        }
-      }, 100);
-    }
-  };
 
   const playCardFlipSound = (cardIndex = 0) => {
     try {
@@ -884,118 +602,31 @@ export default function App() {
     } catch (e) {}
   };
 
-  const startFallbackSynth = () => {
-    try {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      const ctx = audioCtxRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
-
-      if (!synthMasterGainRef.current) {
-        const master = ctx.createGain();
-        master.gain.setValueAtTime(0.001, ctx.currentTime);
-        master.connect(ctx.destination);
-        synthMasterGainRef.current = master;
-
-        const padFreqs = [138.59, 207.65, 277.18, 329.63, 415.3];
-        padFreqs.forEach((f, idx) => {
-          const osc = ctx.createOscillator();
-          const filter = ctx.createBiquadFilter();
-          const oscGain = ctx.createGain();
-
-          osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
-          osc.frequency.setValueAtTime(f, ctx.currentTime);
-
-          filter.type = 'lowpass';
-          filter.frequency.setValueAtTime(650, ctx.currentTime);
-
-          oscGain.gain.setValueAtTime(0.12 / padFreqs.length, ctx.currentTime);
-
-          osc.connect(filter);
-          filter.connect(oscGain);
-          oscGain.connect(master);
-          osc.start();
-        });
-
-        const melodyNotes = [554.37, 659.25, 830.61, 739.99, 659.25, 493.88, 554.37, 415.3];
-        let noteIdx = 0;
-        synthMelodyTimerRef.current = setInterval(() => {
-          if (!synthMasterGainRef.current || !audioCtxRef.current) return;
-          const now = audioCtxRef.current.currentTime;
-          const noteFreq = melodyNotes[noteIdx % melodyNotes.length];
-          noteIdx++;
-
-          const noteOsc = audioCtxRef.current.createOscillator();
-          const noteGain = audioCtxRef.current.createGain();
-          noteOsc.type = 'sine';
-          noteOsc.frequency.setValueAtTime(noteFreq, now);
-
-          noteGain.gain.setValueAtTime(0.0001, now);
-          noteGain.gain.linearRampToValueAtTime(0.085, now + 0.08);
-          noteGain.gain.exponentialRampToValueAtTime(0.0001, now + 3.4);
-
-          noteOsc.connect(noteGain);
-          noteGain.connect(synthMasterGainRef.current);
-          noteOsc.start(now);
-          noteOsc.stop(now + 3.5);
-        }, 2200);
-      }
-    } catch (e) {}
-  };
-
-  const stopFallbackSynth = () => {
-    if (synthMelodyTimerRef.current) {
-      clearInterval(synthMelodyTimerRef.current);
-      synthMelodyTimerRef.current = null;
-    }
-    if (synthMasterGainRef.current && audioCtxRef.current) {
-      try {
-        synthMasterGainRef.current.disconnect();
-      } catch (e) {}
-      synthMasterGainRef.current = null;
-    }
-  };
-
   const startMusicWithFade = () => {
     const a = bgmRef.current;
+    if (!a) return;
     if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
 
-    let v = 0;
-    setMusicVolume(0);
-    setMusicPlaying(true);
-
-    const runFadeInterval = (applyVolume) => {
-      fadeIntervalRef.current = setInterval(() => {
-        v = Math.min(0.6, +(v + 0.03).toFixed(2));
-        applyVolume(v);
-        setMusicVolume(v);
-        if (v >= 0.6) {
-          clearInterval(fadeIntervalRef.current);
-        }
-      }, 100);
-    };
-
-    if (a) {
-      a.volume = 0;
-      const playPromise = a.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            stopFallbackSynth();
-            runFadeInterval((val) => {
-              if (bgmRef.current) bgmRef.current.volume = val;
-            });
-          })
-          .catch(() => {
-            startFallbackSynth();
-            runFadeInterval((val) => {
-              if (synthMasterGainRef.current && audioCtxRef.current) {
-                synthMasterGainRef.current.gain.setValueAtTime(val, audioCtxRef.current.currentTime);
-              }
-            });
-          });
-      }
+    a.volume = 0;
+    const playPromise = a.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          setMusicPlaying(true);
+          let v = 0;
+          setMusicVolume(0);
+          fadeIntervalRef.current = setInterval(() => {
+            v = Math.min(0.6, +(v + 0.03).toFixed(2));
+            if (bgmRef.current) bgmRef.current.volume = v;
+            setMusicVolume(v);
+            if (v >= 0.6) {
+              clearInterval(fadeIntervalRef.current);
+            }
+          }, 100);
+        })
+        .catch(() => {
+          setMusicPlaying(false);
+        });
     }
   };
 
@@ -1003,9 +634,6 @@ export default function App() {
     if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
     if (bgmRef.current && !bgmRef.current.paused) {
       bgmRef.current.pause();
-    }
-    if (synthMasterGainRef.current && audioCtxRef.current) {
-      synthMasterGainRef.current.gain.setValueAtTime(0.0001, audioCtxRef.current.currentTime);
     }
     setMusicPlaying(false);
   };
@@ -1018,111 +646,6 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-    window.addEventListener('resize', resize);
-    resize();
-
-    const stars = Array.from({ length: 300 }).map(() => ({
-      x: Math.random(),
-      y: Math.random(),
-      r: Math.random() * 1.6 + 0.3,
-      phase: Math.random() * Math.PI * 2,
-      gold: Math.random() > 0.72
-    }));
-
-    const spiralParticles = Array.from({ length: 220 }).map((_, i) => ({
-      t: (i / 220) * Math.PI * 4.5,
-      offsetR: (Math.random() - 0.5) * 28,
-      offsetY: (Math.random() - 0.5) * 28,
-      size: Math.random() * 2.2 + 0.6,
-      speed: 0.0022 + Math.random() * 0.0018,
-      bokeh: Math.random() > 0.92
-    }));
-
-    let animId;
-    const animate = () => {
-      const w = canvas.width;
-      const h = canvas.height;
-      const time = Date.now() * 0.001;
-
-      const skyGrad = ctx.createRadialGradient(w * 0.5, h * 0.45, 10, w * 0.5, h * 0.5, Math.max(w, h) * 0.85);
-      skyGrad.addColorStop(0, '#1c1842');
-      skyGrad.addColorStop(0.45, '#120b29');
-      skyGrad.addColorStop(1, '#060312');
-      ctx.fillStyle = skyGrad;
-      ctx.fillRect(0, 0, w, h);
-
-      ctx.save();
-      ctx.translate(w * 0.55, h * 0.36);
-      ctx.rotate(-0.55);
-      const mwGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, Math.max(w, h) * 0.55);
-      mwGrad.addColorStop(0, 'rgba(245, 215, 175, 0.32)');
-      mwGrad.addColorStop(0.25, 'rgba(165, 130, 210, 0.22)');
-      mwGrad.addColorStop(0.55, 'rgba(70, 55, 135, 0.1)');
-      mwGrad.addColorStop(1, 'rgba(15, 12, 41, 0)');
-      ctx.fillStyle = mwGrad;
-      ctx.scale(1.8, 0.48);
-      ctx.beginPath();
-      ctx.arc(0, 0, Math.max(w, h) * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      stars.forEach((s) => {
-        const alpha = 0.35 + 0.65 * Math.sin(time * 2.3 + s.phase);
-        ctx.fillStyle = s.gold ? `rgba(255, 223, 150, ${alpha})` : `rgba(235, 240, 255, ${alpha})`;
-        ctx.beginPath();
-        ctx.arc(s.x * w, s.y * h, s.r, 0, Math.PI * 2);
-        ctx.fill();
-      });
-
-      const centerX = w * 0.5;
-      const centerY = h * 0.48;
-      const maxRadius = Math.min(w, h) * 0.42;
-
-      spiralParticles.forEach((p) => {
-        p.t += p.speed;
-        if (p.t > Math.PI * 4.5) p.t -= Math.PI * 4.5;
-        const progress = p.t / (Math.PI * 4.5);
-        const radius = progress * maxRadius;
-        const angle = p.t + time * 0.16;
-        const px = centerX + Math.cos(angle) * radius * 1.25 + p.offsetR;
-        const py = centerY + Math.sin(angle) * radius * 0.85 + p.offsetY;
-
-        if (p.bokeh) {
-          const bokehGrad = ctx.createRadialGradient(px - 2, py - 2, 1, px, py, p.size * 3);
-          bokehGrad.addColorStop(0, '#fff4d2');
-          bokehGrad.addColorStop(0.5, '#e5b05c');
-          bokehGrad.addColorStop(1, 'rgba(229, 176, 92, 0)');
-          ctx.fillStyle = bokehGrad;
-          ctx.beginPath();
-          ctx.arc(px, py, p.size * 3, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          ctx.fillStyle = `rgba(255, 218, 135, ${0.22 + (1 - progress) * 0.6})`;
-          ctx.beginPath();
-          ctx.arc(px, py, p.size, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      });
-
-      animId = requestAnimationFrame(animate);
-    };
-    animate();
-
-    return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener('resize', resize);
-    };
-  }, []);
-
   const enterSpace = () => {
     playCardFlipSound(0);
     startMusicWithFade();
@@ -1132,7 +655,6 @@ export default function App() {
     }, 1200);
   };
 
-  // --- РАСКЛАД 5 КАРТ В ОДИН РЯД НА СТОЛЕ + БЫСТРОЕ ОТКРЫТИЕ СО ЗВУКОМ + АВТОСКРОЛЛ ---
   const performReading = async (currentQuestion) => {
     setErrorMsg('');
     const actualQuestion = currentQuestion.trim() || 'Сделай общий анализ моей ситуации на сегодня.';
@@ -1179,27 +701,17 @@ export default function App() {
 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ ПОВЕРХНОСТНЫЕ ШТАМПЫ:
 - Запрещено писать пустые фразы вроде: "Выпавшие карты представляют собой мощный коктейль архетипов", "указывают на множество слоев ситуации", "символизирует новые начинания и стремление к обучению", "говорит о самопознании".
 - Запрещено пересказывать заученные словарные значения карт в отрыве от темы вопроса!
-  * Если вопрос про ФИЗИЧЕСКОЕ СОСТОЯНИЕ, ЖИЗНЬ ИЛИ ЗДОРОВЬЕ человека: переводи каждую карту на язык тела, жизненной силы (витальности), энергии и физики. (Например: Пентакли — это физический ресурс тела, плоть, заземление, запас прочности, сохранение жизни; Паж Пентаклей — малый, но живой, стабильный физический импульс, сохранность тела, медленное восстановление; Четверка Пентаклей — режим жесткой экономии сил, закрытость, консервация энергии ради выживания, скованность или изоляция; Кубки — эмоциональный фон, психосоматика, шок, слезы, истощение; Мечи — острота кризиса, боль, холод, внешняя угроза, ранение или преграда; Жезлы — огонь жизни, температура, воля к борьбе, импульс; Старшие Арканы — фундаментальные пороги судьбы, спасенность, переход или тяжелое испытание).
+  * Если вопрос про ФИЗИЧЕСКОЕ СОСТОЯНИЕ, ЖИЗНЬ ИЛИ ЗДОРОВЬЕ человека: переводи каждую карту на язык тела, жизненной силы (витальности), энергии и физики.
   * Если вопрос про ОТНОШЕНИЯ, РАБОТУ, ДЕНЬГИ или ВЫБОР: переводи каждую деталь аркана непосредственно в реальные поступки, мотивы, скрытые факторы и физические обстоятельства этой темы.
 - Запрещено использовать заголовки с решетками ###.
 
 СТРУКТУРА ГЛУБОКОГО АНАЛИЗА:
-
-1. Ядро ситуации и прямой ответ по сути вопроса:
-Сразу в первом абзаце дай прямой, концентрированный взгляд на вопрос на основе баланса стихий и старших арканов на столе. Что происходит на самом деле прямо сейчас?
-
-2. Глубокий синтез и связка 5 карт (не по отдельности, а как единая цепь):
-Покажи, как карты взаимодействуют, меняют и дополняют друг друга:
-- Карты 1 и 2 (исходный импульс и текущая реальность): что привело к этому моменту и в каких реальных физических/эмоциональных условиях находится ситуация или человек прямо сейчас.
-- Карта 3 (центральный узел расклада): сердцевина происходящего, главный фактор, на котором все держится.
-- Карты 4 и 5 (скрытые процессы, удержание и итоговый вектор): как меняется состояние, что защищает или, наоборот, давит, и к какому реальному исходу стягивается вся цепочка.
-Объясняй живым человеческим языком, почему соседство одной карты с другой дает именно такой смысл в контексте вопроса.
-
-3. Итоговый вывод:
-Четкое, честное и глубокое резюме без воды и без двусмысленных отписок.
+1. Ядро ситуации и прямой ответ по сути вопроса сразу в первом абзаце.
+2. Глубокий синтез и связка 5 карт как единой цепи (1 и 2 — основа и реальность, 3 — центральный узел, 4 и 5 — динамика, удержание и итог).
+3. Четкий итоговый вывод без воды.
 
 ОБЯЗАТЕЛЬНО В САМОМ КОНЦЕ:
-Добавь строку "ГЛАВНЫЙ СОВЕТ:" и напиши 2-3 четких, конкретных, практических действия в повелительном наклонении (что человеку реально предпринять, проверить или сделать), без абстрактной философии.`;
+Добавь строку "ГЛАВНЫЙ СОВЕТ:" и напиши 2-3 четких, конкретных, практических действия в повелительном наклонении.`;
 
       const fullPrompt = `ВОПРОС ПОЛЬЗОВАТЕЛЯ: "${actualQuestion}"
 ВЫПАВШИЕ 5 КАРТ НА СТОЛЕ (слева направо):
@@ -1209,7 +721,7 @@ export default function App() {
 4. ${selected[3].name}
 5. ${selected[4].name}
 
-Сделай глубокий, проницательный профессиональный синтез этих 5 карт СТРОГО в контексте вопроса "${actualQuestion}". Переведи символику каждой карты и их связок непосредственно на предмет вопроса (без книжных шаблонов, без решеток ### и без любых предупреждений). В конце выдели блок "ГЛАВНЫЙ СОВЕТ:".`;
+Сделай глубокий, проницательный профессиональный синтез этих 5 карт СТРОГО в контексте вопроса "${actualQuestion}". В конце выдели блок "ГЛАВНЫЙ СОВЕТ:".`;
 
       const rawText = await requestDeepTarotLLM({
         cleanKey,
@@ -1255,7 +767,6 @@ export default function App() {
     setLoading(false);
   };
 
-  // --- УТОЧНЯЮЩИЕ ВОПРОСЫ ПО ТЕКУЩЕЙ ВЕТКЕ РАСКЛАДА ---
   const askFollowUpQuestion = async (isHistoryView = false) => {
     const activeQuestionText = followUpInput.trim();
     if (!activeQuestionText || followUpLoading) return;
@@ -1439,14 +950,13 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
 
     .tarot-stage {
       position: relative;
-      width: min(100%, 1180px);
+      width: min(100vw, 1400px);
       aspect-ratio: 1920 / 1098;
       margin: 0 auto;
       user-select: none;
     }
     .tarot-stage video,
-    .tarot-stage img.fallback,
-    .tarot-stage .svg-table-fallback {
+    .tarot-stage img.fallback {
       position: absolute;
       inset: 0;
       width: 100%;
@@ -1454,11 +964,15 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
       object-fit: contain;
       pointer-events: none;
     }
-    .tarot-stage .sway-anim {
+    .tarot-stage img.fallback {
+      display: none;
       animation: tarot-sway 6s ease-in-out infinite;
     }
     .tarot-stage.no-alpha video {
       display: none;
+    }
+    .tarot-stage.no-alpha img.fallback {
+      display: block;
     }
 
     @keyframes tarot-sway {
@@ -1499,10 +1013,6 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
         width: 52%;
         gap: 1.5%;
       }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .tarot-stage .sway-anim { animation: none; }
     }
 
     @keyframes pulse-gold {
@@ -1594,18 +1104,6 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
     <>
       <style>{globalStyles}</style>
 
-      <canvas
-        ref={canvasRef}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          zIndex: -2,
-          pointerEvents: 'none'
-        }}
-      />
-
       <video
         ref={videoRef}
         className="bg"
@@ -1613,7 +1111,6 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
         muted
         loop
         playsInline
-        onLoadedData={() => setCustomBgVideoLoaded(true)}
       >
         <source media="(orientation: portrait)" src={mediaUrls.phoneWebm} type="video/webm" />
         <source media="(orientation: portrait)" src={mediaUrls.phoneMp4} type="video/mp4" />
@@ -1637,153 +1134,6 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
       >
         {musicPlaying ? '♪' : <VolumeX size={20} />}
       </button>
-
-      {IS_SANDBOX_PREVIEW && (
-        <div style={{ position: 'fixed', top: '12px', left: '12px', zIndex: 60 }}>
-          <button
-            onClick={() => setShowMediaDrawer(!showMediaDrawer)}
-            className="text-font"
-            style={{
-              background: 'rgba(15, 9, 32, 0.78)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(229, 176, 92, 0.45)',
-              color: '#e5b05c',
-              padding: '7px 13px',
-              borderRadius: '20px',
-              fontSize: '0.88rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: 'pointer'
-            }}
-          >
-            <Film size={14} />
-            {customBgVideoLoaded || customAudioLoaded || tableVideoReady ? 'Файлы подключены' : 'Файлы / превью'}
-          </button>
-
-          {showMediaDrawer && (
-            <div
-              className="glass-panel text-font"
-              style={{
-                marginTop: '8px',
-                width: 'min(92vw, 330px)',
-                padding: '15px',
-                fontSize: '0.92rem',
-                borderRadius: '18px'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <strong className="mystic-font" style={{ color: '#ffe3a8', fontSize: '1rem' }}>
-                  Подключить ваши медиафайлы
-                </strong>
-                <button
-                  onClick={() => setShowMediaDrawer(false)}
-                  style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer' }}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: 'rgba(255,255,255,0.06)',
-                    padding: '7px 11px',
-                    borderRadius: '10px',
-                    border: '1px solid rgba(229,176,92,0.35)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Film size={14} color="#e5b05c" /> Стол на облаке (table-cloud-loop.webm)
-                  </span>
-                  {tableVideoReady ? <Check size={14} color="#5ce58a" /> : <Upload size={14} color="#e5b05c" />}
-                  <input
-                    type="file"
-                    accept="video/webm,video/mp4"
-                    style={{ display: 'none' }}
-                    onChange={(e) => handleFileUpload('tableWebm', e)}
-                  />
-                </label>
-
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: 'rgba(255,255,255,0.06)',
-                    padding: '7px 11px',
-                    borderRadius: '10px',
-                    border: '1px solid rgba(229,176,92,0.35)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Film size={14} color="#e5b05c" /> Облако совета (cloud-loop-alpha.webm)
-                  </span>
-                  {cloudVideoReady ? <Check size={14} color="#5ce58a" /> : <Upload size={14} color="#e5b05c" />}
-                  <input
-                    type="file"
-                    accept="video/webm,video/mp4"
-                    style={{ display: 'none' }}
-                    onChange={(e) => handleFileUpload('adviceCloudWebm', e)}
-                  />
-                </label>
-
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: 'rgba(255,255,255,0.06)',
-                    padding: '7px 11px',
-                    borderRadius: '10px',
-                    border: '1px solid rgba(229,176,92,0.35)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Film size={14} color="#e5b05c" /> Видео-фон (ПК / Телефон)
-                  </span>
-                  {customBgVideoLoaded ? <Check size={14} color="#5ce58a" /> : <Upload size={14} color="#e5b05c" />}
-                  <input
-                    type="file"
-                    accept="video/mp4,video/webm"
-                    style={{ display: 'none' }}
-                    onChange={(e) => handleFileUpload('desktopMp4', e)}
-                  />
-                </label>
-
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: 'rgba(255,255,255,0.06)',
-                    padding: '7px 11px',
-                    borderRadius: '10px',
-                    border: '1px solid rgba(229,176,92,0.35)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Music size={14} color="#e5b05c" /> Музыка (tarot-ambient-loop.mp3)
-                  </span>
-                  {customAudioLoaded ? <Check size={14} color="#5ce58a" /> : <Upload size={14} color="#e5b05c" />}
-                  <input
-                    type="file"
-                    accept="audio/mp3,audio/mpeg,audio/wav"
-                    style={{ display: 'none' }}
-                    onChange={(e) => handleFileUpload('bgmMp3', e)}
-                  />
-                </label>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </>
   );
 
@@ -2011,11 +1361,6 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
                   <X size={18} />
                 </button>
               </div>
-              <p style={{ margin: '0 0 14px 0', color: '#e2d6f5', fontSize: '1.08rem', lineHeight: 1.45 }}>
-                Ваши расклады автоматически сохраняются в облаке за вашим кодом{' '}
-                <strong style={{ color: '#ffe3a8' }}>{syncCode}</strong>. Чтобы открыть эту же историю на другом устройстве
-                (например, на iPhone или компьютере), введите этот код там:
-              </p>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <button
                   onClick={copySyncCode}
@@ -2240,7 +1585,22 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
           </div>
 
           <div className="advice-cloud-box text-font">
-            <AdviceCloudBackdropSVG />
+            <video
+              autoPlay
+              muted
+              loop
+              playsInline
+              src={mediaUrls.adviceCloudWebm}
+              style={{
+                position: 'absolute',
+                inset: '-18% -12%',
+                width: '124%',
+                height: '136%',
+                objectFit: 'contain',
+                zIndex: -1,
+                pointerEvents: 'none'
+              }}
+            />
             <div
               className="mystic-font"
               style={{
@@ -2393,12 +1753,6 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
           className={`tarot-stage ${tableNoAlpha ? 'no-alpha' : ''}`}
           id="tarotStage"
         >
-          {!tableVideoReady && (
-            <div className="svg-table-fallback sway-anim">
-              <FloatingTableOnCloudSVG />
-            </div>
-          )}
-
           <video
             ref={tableVideoRef}
             autoPlay
@@ -2406,20 +1760,15 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
             loop
             playsInline
             preload="auto"
-            onLoadedData={() => setTableVideoReady(true)}
             onError={() => setTableNoAlpha(true)}
-            style={{ opacity: tableVideoReady && !tableNoAlpha ? 1 : 0 }}
           >
             <source src={mediaUrls.tableWebm} type='video/webm; codecs="vp9"' />
           </video>
 
           <img
-            className="fallback sway-anim"
+            className="fallback"
             src={mediaUrls.tableWebp}
-            alt=""
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
+            alt="Стол судьбы"
           />
 
           <div className="tarot-spread" id="tarotSpread">
@@ -2516,27 +1865,22 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
 
               {mainAdvice && (
                 <div className="advice-cloud-box text-font">
-                  <AdviceCloudBackdropSVG />
-                  {cloudVideoReady && (
-                    <video
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                      src={mediaUrls.adviceCloudWebm}
-                      style={{
-                        position: 'absolute',
-                        inset: '-15% -10%',
-                        width: '120%',
-                        height: '130%',
-                        objectFit: 'cover',
-                        zIndex: -1,
-                        pointerEvents: 'none',
-                        opacity: 0.45,
-                        borderRadius: '36px'
-                      }}
-                    />
-                  )}
+                  <video
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    src={mediaUrls.adviceCloudWebm}
+                    style={{
+                      position: 'absolute',
+                      inset: '-18% -12%',
+                      width: '124%',
+                      height: '136%',
+                      objectFit: 'contain',
+                      zIndex: -1,
+                      pointerEvents: 'none'
+                    }}
+                  />
                   <div
                     className="mystic-font"
                     style={{
