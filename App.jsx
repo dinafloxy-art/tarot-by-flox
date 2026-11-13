@@ -3,10 +3,6 @@ import {
   VolumeX,
   BookOpen,
   ChevronLeft,
-  Upload,
-  Film,
-  Music,
-  Check,
   X,
   Trash2,
   Send,
@@ -29,6 +25,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 
+// --- ИНИЦИАЛИЗАЦИЯ FIREBASE (ОБЛАЧНАЯ СИНХРОНИЗАЦИЯ ИСТОРИИ) ---
 let app = null;
 let auth = null;
 let db = null;
@@ -55,6 +52,7 @@ const FAL_KEY =
   (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FAL_KEY) ||
   'fal_sk_93501a40318d4047a6d3c501918eaae0:bfe0578b8aaf2c3b74dda9f90728e7d9';
 
+// Генерация гарантированного уникального кода синхронизации для каждого пользователя
 const getOrCreateSyncCode = () => {
   try {
     const existing = localStorage.getItem('tarot_flox_sync_code');
@@ -73,6 +71,7 @@ const getOrCreateSyncCode = () => {
   }
 };
 
+// Облачное KV-хранилище для синхронизации между телефоном и ПК на Vercel без настройки собственной БД
 const CLOUD_KV_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
 const CLOUD_APP_TOKEN = '4f9b2c8e';
 
@@ -118,12 +117,7 @@ const pullHistoryFromCloudKV = async (code) => {
   return null;
 };
 
-const IS_SANDBOX_PREVIEW =
-  typeof window !== 'undefined' &&
-  (window.location.hostname.includes('googleusercontent') ||
-    window.location.hostname.includes('scf.usercontent') ||
-    window.location.protocol === 'blob:');
-
+// Вызов мощной языковой модели (Claude 3.5 Sonnet с автоматическим фоллбэком на GPT-4o)
 const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
   const preferredModels = [
     'anthropic/claude-3.5-sonnet',
@@ -173,6 +167,9 @@ const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
   throw lastError || new Error('Не удалось получить ответ от модели');
 };
 
+// ТОЧНЫЕ КОДЫ ВСЕХ 78 КАРТ КОЛОДЫ РАЙДЕРА-УЭЙТА (PKT STANDARD):
+// Туз = ac, 2..10 = 02..10, Паж = pa, Рыцарь = kn, Королева = qu, Король = ki
+// Масти: Жезлы = wa, Кубки = cu, Мечи = sw, Пентакли = pe (CDN) / pa (sacred-texts)
 const SUITS = [
   { id: 'wa', altId: 'wa', name: 'Жезлов', symbol: '🪄', color: '#e89b46' },
   { id: 'cu', altId: 'cu', name: 'Кубков', symbol: '🏆', color: '#63b3ed' },
@@ -209,6 +206,7 @@ const ROMAN_MAJORS = [
   'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX', 'XXI'
 ];
 
+// Генерация встроенного золотого SVG-аркана (подстраховка, если у пользователя пропал интернет)
 const createFallbackCardDataUri = (title, subtitle, symbol = '✦', accent = '#e5b05c') => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 520" width="300" height="520">
     <defs>
@@ -385,6 +383,7 @@ export default function App() {
 
   const [tableNoAlpha, setTableNoAlpha] = useState(false);
 
+  // Точные пути к вашим реальным файлам
   const mediaUrls = {
     phoneWebm: '/phone-loop-muted.webm',
     phoneMp4: '/phone-loop-muted.mp4',
@@ -407,6 +406,7 @@ export default function App() {
 
   const audioCtxRef = useRef(null);
 
+  // Предзагрузка всех 78 карт
   useEffect(() => {
     let cancelled = false;
     const preloadAllCards = async () => {
@@ -423,6 +423,7 @@ export default function App() {
     };
   }, []);
 
+  // Авторизация Firebase
   useEffect(() => {
     if (!auth) return;
     const initAuth = async () => {
@@ -443,6 +444,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // История раскладов (локальная + облачная синхронизация по коду)
   useEffect(() => {
     try {
       const savedLocal = localStorage.getItem('tarotHistory_flox_v2');
@@ -456,6 +458,7 @@ export default function App() {
     } catch (e) {}
   }, []);
 
+  // Подтягивание истории из облака при смене/наличии кода синхронизации
   useEffect(() => {
     if (!syncCode) return;
     let active = true;
@@ -546,7 +549,7 @@ export default function App() {
   }, [user, syncCode]);
 
   const saveReadingToStorage = async (readingObj) => {
-    const codeUpper = (syncCode || (user ? user.uid.slice(0, 8) : 'FLOX')).trim().toUpperCase();
+    const codeUpper = (syncCode || getOrCreateSyncCode()).trim().toUpperCase();
     const itemToSave = { ...readingObj, syncCode: codeUpper };
 
     setHistory((prev) => {
@@ -555,6 +558,7 @@ export default function App() {
       try {
         localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(updated));
       } catch (e) {}
+      pushHistoryToCloudKV(codeUpper, updated);
       return updated;
     });
 
@@ -571,12 +575,14 @@ export default function App() {
 
   const deleteHistoryItem = async (id, e) => {
     if (e) e.stopPropagation();
+    const codeUpper = (syncCode || getOrCreateSyncCode()).trim().toUpperCase();
 
     setHistory((prev) => {
       const updated = prev.filter((item) => item.id !== id);
       try {
         localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(updated));
       } catch (err) {}
+      pushHistoryToCloudKV(codeUpper, updated);
       return updated;
     });
 
@@ -587,7 +593,6 @@ export default function App() {
 
     if (user && db) {
       const docId = String(id);
-      const codeUpper = (syncCode || user.uid.slice(0, 8)).trim().toUpperCase();
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'readings', docId));
         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'readings_by_code', `${codeUpper}_${docId}`));
@@ -597,6 +602,7 @@ export default function App() {
     }
   };
 
+  // Проверка Safari / iPhone для прозрачности WebM
   useEffect(() => {
     const ua = navigator.userAgent || '';
     const webkitOnly =
@@ -785,7 +791,7 @@ export default function App() {
 3. Четкий итоговый вывод без воды.
 
 ОБЯЗАТЕЛЬНО В САМОМ КОНЦЕ:
-Добавь строку "ГЛАВНЫЙ СОВЕТ:" и напиши 2-3 четких, конкретных, практических действия в повелительном наклонении.`;
+Добавь строку "ГЛАВНЫЙ СОВЕТ:" и напиши 2-3 четких, конкретных, практических действия в повелительном наклонении (что человеку реально предпринять, проверить или сделать), без абстрактной философии.`;
 
       const fullPrompt = `ВОПРОС ПОЛЬЗОВАТЕЛЯ: "${actualQuestion}"
 ВЫПАВШИЕ 5 КАРТ НА СТОЛЕ (слева направо):
@@ -795,7 +801,7 @@ export default function App() {
 4. ${selected[3].name}
 5. ${selected[4].name}
 
-Сделай глубокий, проницательный профессиональный синтез этих 5 карт СТРОГО в контексте вопроса "${actualQuestion}". В конце выдели блок "ГЛАВНЫЙ СОВЕТ:".`;
+Сделай глубокий, проницательный профессиональный синтез этих 5 карт СТРОГО в контексте вопроса "${actualQuestion}". Переведи символику каждой карты и их связок непосредственно на предмет вопроса (без книжных шаблонов, без решеток ### и без любых предупреждений). В конце выдели блок "ГЛАВНЫЙ СОВЕТ:".`;
 
       const rawText = await requestDeepTarotLLM({
         cleanKey,
@@ -943,7 +949,7 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
     setView('historyDetail');
   };
 
-  const applyCustomSyncCode = () => {
+  const applyCustomSyncCode = async () => {
     const clean = syncInput.trim().toUpperCase();
     if (clean.length < 3) return;
     setSyncCode(clean);
@@ -952,6 +958,21 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
     } catch (e) {}
     setSyncInput('');
     setShowSyncModal(false);
+
+    const cloudItems = await pullHistoryFromCloudKV(clean);
+    if (cloudItems && cloudItems.length > 0) {
+      setHistory((prev) => {
+        const mergedMap = new Map();
+        [...cloudItems, ...prev].forEach((it) => {
+          if (it && it.id) mergedMap.set(it.id, it);
+        });
+        const merged = Array.from(mergedMap.values()).sort((a, b) => b.id - a.id);
+        try {
+          localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(merged));
+        } catch (e) {}
+        return merged;
+      });
+    }
   };
 
   const copySyncCode = () => {
@@ -1094,6 +1115,10 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
         width: 54%;
         gap: 1.5%;
       }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .tarot-stage img.fallback { animation: none; }
     }
 
     @keyframes pulse-gold {
@@ -1334,24 +1359,65 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
         {renderBackgroundLayer()}
 
         <div
-          className="glass-panel"
           style={{
+            position: 'relative',
             zIndex: 2,
             textAlign: 'center',
-            maxWidth: '680px',
-            margin: '0 20px',
-            padding: 'clamp(2.4rem, 5vw, 3.6rem) clamp(1.8rem, 4vw, 3rem)',
-            animation: view === 'transition' ? 'disperse 1.2s forwards' : 'none'
+            width: 'min(96vw, 920px)',
+            aspectRatio: '16 / 10',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 'clamp(2rem, 5vw, 4rem)',
+            animation: view === 'transition' ? 'disperse 1.2s forwards' : 'tarot-sway 6s ease-in-out infinite'
           }}
         >
+          {/* Мягкое магическое свечение позади облака */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: '12% 10%',
+              borderRadius: '50%',
+              background:
+                'radial-gradient(ellipse at center, rgba(48, 22, 88, 0.82) 0%, rgba(76, 38, 128, 0.52) 48%, rgba(22, 12, 40, 0) 76%)',
+              filter: 'blur(18px)',
+              zIndex: -2,
+              pointerEvents: 'none'
+            }}
+          />
+
+          {/* Настоящее видео-облако cloud-loop-alpha.webm без квадратной рамки */}
+          {!tableNoAlpha && (
+            <video
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="auto"
+              src={mediaUrls.adviceCloudWebm}
+              style={{
+                position: 'absolute',
+                inset: '-8% -6%',
+                width: '112%',
+                height: '116%',
+                objectFit: 'contain',
+                zIndex: -1,
+                pointerEvents: 'none',
+                filter: 'drop-shadow(0 20px 45px rgba(0, 0, 0, 0.85))'
+              }}
+            />
+          )}
+
           <h1
             className="mystic-font"
             style={{
-              fontSize: 'clamp(2.2rem, 5.5vw, 3.8rem)',
+              fontSize: 'clamp(2.1rem, 5.2vw, 3.7rem)',
               color: '#ffe3a8',
-              margin: '0 0 14px 0',
-              lineHeight: 1.2,
-              textShadow: '0 0 30px rgba(229,176,92,0.9)'
+              margin: '0 0 12px 0',
+              lineHeight: 1.18,
+              maxWidth: '640px',
+              textShadow: '0 4px 18px rgba(0, 0, 0, 0.95), 0 0 32px rgba(229, 176, 92, 0.85)'
             }}
           >
             Магическое пространство ответов
@@ -1359,10 +1425,11 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
           <p
             className="text-font"
             style={{
-              fontSize: 'clamp(1.25rem, 3vw, 1.65rem)',
-              color: '#d9c6f0',
-              margin: '0 0 42px 0',
-              letterSpacing: '2px'
+              fontSize: 'clamp(1.25rem, 2.8vw, 1.65rem)',
+              color: '#f0e4ff',
+              margin: '0 0 34px 0',
+              letterSpacing: '2.5px',
+              textShadow: '0 2px 12px rgba(0, 0, 0, 0.95)'
             }}
           >
             by.Flox
@@ -1371,8 +1438,8 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
             onClick={enterSpace}
             className="text-font btn-magical"
             style={{
-              padding: '20px 56px',
-              fontSize: 'clamp(1.2rem, 3vw, 1.45rem)',
+              padding: '19px 52px',
+              fontSize: 'clamp(1.15rem, 2.8vw, 1.4rem)',
               animation: 'pulse-gold 3.2s infinite'
             }}
           >
@@ -1442,6 +1509,11 @@ ${threadHistoryText ? `\nПредыдущий диалог в рамках эт�
                   <X size={18} />
                 </button>
               </div>
+              <p style={{ margin: '0 0 14px 0', color: '#e2d6f5', fontSize: '1.08rem', lineHeight: 1.45 }}>
+                Ваши расклады автоматически сохраняются в облаке за вашим кодом{' '}
+                <strong style={{ color: '#ffe3a8' }}>{syncCode}</strong>. Чтобы открыть эту же историю на другом устройстве
+                (например, на iPhone или компьютере), введите этот код там:
+              </p>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <button
                   onClick={copySyncCode}
