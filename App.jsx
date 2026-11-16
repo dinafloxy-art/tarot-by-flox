@@ -3,10 +3,6 @@ import {
   VolumeX,
   BookOpen,
   ChevronLeft,
-  Upload,
-  Film,
-  Music,
-  Check,
   X,
   Trash2,
   Send,
@@ -29,6 +25,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 
+// --- ИНИЦИАЛИЗАЦИЯ FIREBASE (ОБЛАЧНАЯ СИНХРОНИЗАЦИЯ ИСТОРИИ) ---
 let app = null;
 let auth = null;
 let db = null;
@@ -38,8 +35,6 @@ try {
   const rawConfig =
     typeof __firebase_config !== 'undefined' && __firebase_config
       ? __firebase_config
-      : typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_CONFIG
-      ? import.meta.env.VITE_FIREBASE_CONFIG
       : null;
   if (rawConfig) {
     const firebaseConfig = typeof rawConfig === 'string' ? JSON.parse(rawConfig) : rawConfig;
@@ -51,87 +46,137 @@ try {
   console.warn('Firebase init fallback:', e);
 }
 
-const FAL_KEY =
-  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FAL_KEY) ||
 const FAL_KEY = 'fal_sk_93501a40318d4047a6d3c501918eaae0:bfe0578b8aaf2c3b74dda9f90728e7d9';
 
-const IS_SANDBOX_PREVIEW =
-  typeof window !== 'undefined' &&
-  (window.location.hostname.includes('googleusercontent') ||
-    window.location.hostname.includes('scf.usercontent') ||
-    window.location.protocol === 'blob:');
-
-const CLOUD_KV_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
-const CLOUD_APP_KEY = 'tarotfloxsync8921';
-
-const fetchCloudReadingsByCode = async (code) => {
-  const cleanCode = (code || '').trim().toUpperCase();
-  if (cleanCode.length < 3) return [];
+// Генерация гарантированного уникального кода синхронизации для каждого пользователя
+const getOrCreateSyncCode = () => {
   try {
-    const res = await fetch(`${CLOUD_KV_BASE}/GetValue/${CLOUD_APP_KEY}/${cleanCode}`);
-    if (!res.ok) return [];
-    const raw = await res.json();
-    if (!raw || typeof raw !== 'string') return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const existing = localStorage.getItem('tarot_flox_sync_code');
+    if (existing && existing.trim().length >= 4) {
+      return existing.trim().toUpperCase();
+    }
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let generated = 'FX';
+    for (let i = 0; i < 6; i++) {
+      generated += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    localStorage.setItem('tarot_flox_sync_code', generated);
+    return generated;
   } catch (e) {
-    return [];
+    return 'FX777888';
   }
 };
 
-const pushCloudReadingsByCode = async (code, readingsList) => {
-  const cleanCode = (code || '').trim().toUpperCase();
-  if (cleanCode.length < 3) return;
+// Облачное KV-хранилище для синхронизации между телефоном и ПК на Vercel без настройки собственной БД
+const CLOUD_KV_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
+const CLOUD_APP_TOKEN = '4f9b2c8e';
+
+const pushHistoryToCloudKV = async (code, historyList) => {
+  if (!code) return;
   try {
-    const compactList = readingsList.slice(0, 25);
-    const serialized = encodeURIComponent(JSON.stringify(compactList));
-    await fetch(`${CLOUD_KV_BASE}/UpdateValue/${CLOUD_APP_KEY}/${cleanCode}/${serialized}`, {
+    const safeKey = `tarot_flox_${code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')}`;
+    const slimHistory = (historyList || []).slice(0, 25).map((item) => ({
+      id: item.id,
+      date: item.date,
+      question: item.question,
+      cards: (item.cards || []).map((c) => ({ code: c.code, name: c.name })),
+      analysis: item.analysis,
+      advice: item.advice,
+      followUps: (item.followUps || []).map((fu) => ({
+        id: fu.id,
+        q: fu.q,
+        a: fu.a,
+        cards: (fu.cards || []).map((fc) => ({ code: fc.code, name: fc.name }))
+      }))
+    }));
+    const encoded = encodeURIComponent(JSON.stringify(slimHistory));
+    await fetch(`${CLOUD_KV_BASE}/UpdateValue/${CLOUD_APP_TOKEN}/${safeKey}/${encoded}`, {
       method: 'POST'
     });
   } catch (e) {}
 };
 
-const generateSyncCode = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let result = 'FX';
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+const pullHistoryFromCloudKV = async (code) => {
+  if (!code) return null;
+  try {
+    const safeKey = `tarot_flox_${code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')}`;
+    const res = await fetch(`${CLOUD_KV_BASE}/GetValue/${CLOUD_APP_TOKEN}/${safeKey}`);
+    if (!res.ok) return null;
+    const raw = await res.json();
+    if (!raw) return null;
+    const parsed = JSON.parse(decodeURIComponent(raw));
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => ({
+        ...item,
+        cards: (item.cards || []).map((c) => {
+          const fullCard = DECK.find((d) => d.code === c.code || d.name === c.name);
+          return fullCard || c;
+        }),
+        followUps: (item.followUps || []).map((fu) => ({
+          ...fu,
+          cards: (fu.cards || []).map((fc) => {
+            const fullCard = DECK.find((d) => d.code === fc.code || d.name === fc.name);
+            return fullCard || fc;
+          })
+        }))
+      }));
+    }
+  } catch (e) {}
+  return null;
 };
 
-const requestDeepTarotLLM = async ({ systemPrompt, prompt }) => {
-  const cleanKey = FAL_KEY.trim();
-  if (!cleanKey || cleanKey.includes('ваш_настоящий_ключ')) {
-    throw new Error('Укажите корректный FAL_KEY');
+// Вызов флагманской модели Google Gemini 2.5 Pro (с автоматическим резервом на Gemini 2.5 Flash и Claude 3.5 Sonnet)
+const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
+  const preferredModels = [
+    'google/gemini-2.5-pro',
+    'google/gemini-2.5-flash',
+    'anthropic/claude-3.5-sonnet',
+    'openai/gpt-4o'
+  ];
+
+  let lastError = null;
+
+  for (const modelName of preferredModels) {
+    try {
+      const response = await fetch('https://fal.run/fal-ai/any-llm', {
+        method: 'POST',
+        headers: {
+          Authorization: `Key ${cleanKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: modelName,
+          system_prompt: systemPrompt,
+          prompt
+        })
+      });
+
+      const responseText = await response.text();
+      let data = {};
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        throw new Error('Некорректный ответ сервера');
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.detail ? JSON.stringify(data.detail) : `Ошибка (${response.status})`);
+      }
+
+      const rawText =
+        data.output || data.text || data.response || data.choices?.[0]?.message?.content;
+      if (rawText && String(rawText).trim().length > 0) {
+        return String(rawText).trim();
+      }
+    } catch (err) {
+      lastError = err;
+    }
   }
 
-  const response = await fetch('https://fal.run/fal-ai/any-llm', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Key ${cleanKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'anthropic/claude-3.5-sonnet',
-      system_prompt: systemPrompt,
-      prompt: prompt
-    })
-  });
-
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data?.detail ? JSON.stringify(data.detail) : `Ошибка API (${response.status})`);
-  }
-
-  const text = data.output || data.text || data.response || data.choices?.[0]?.message?.content;
-  if (!text || typeof text !== 'string' || !text.trim()) {
-    throw new Error('Пустой ответ от модели');
-  }
-
-  return text.trim();
+  throw lastError || new Error('Не удалось получить ответ от модели');
 };
 
+// ТОЧНЫЕ КОДЫ ВСЕХ 78 КАРТ КОЛОДЫ РАЙДЕРА-УЭЙТА (PKT STANDARD):
 const SUITS = [
   { id: 'wa', altId: 'wa', name: 'Жезлов', symbol: '🪄', color: '#e89b46' },
   { id: 'cu', altId: 'cu', name: 'Кубков', symbol: '🏆', color: '#63b3ed' },
@@ -140,20 +185,20 @@ const SUITS = [
 ];
 
 const RANKS = [
-  { code: 'ac', numCode: '01', name: 'Туз', label: 'I' },
-  { code: '02', numCode: '02', name: 'Двойка', label: 'II' },
-  { code: '03', numCode: '03', name: 'Тройка', label: 'III' },
-  { code: '04', numCode: '04', name: 'Четверка', label: 'IV' },
-  { code: '05', numCode: '05', name: 'Пятерка', label: 'V' },
-  { code: '06', numCode: '06', name: 'Шестерка', label: 'VI' },
-  { code: '07', numCode: '07', name: 'Семерка', label: 'VII' },
-  { code: '08', numCode: '08', name: 'Восьмерка', label: 'VIII' },
-  { code: '09', numCode: '09', name: 'Девятка', label: 'IX' },
-  { code: '10', numCode: '10', name: 'Десятка', label: 'X' },
-  { code: 'pa', numCode: 'pa', name: 'Паж', label: 'Паж' },
-  { code: 'kn', numCode: 'kn', name: 'Рыцарь', label: 'Рыцарь' },
-  { code: 'qu', numCode: 'qu', name: 'Королева', label: 'Королева' },
-  { code: 'ki', numCode: 'ki', name: 'Король', label: 'Король' }
+  { code: 'ac', name: 'Туз', label: 'I' },
+  { code: '02', name: 'Двойка', label: 'II' },
+  { code: '03', name: 'Тройка', label: 'III' },
+  { code: '04', name: 'Четверка', label: 'IV' },
+  { code: '05', name: 'Пятерка', label: 'V' },
+  { code: '06', name: 'Шестерка', label: 'VI' },
+  { code: '07', name: 'Семерка', label: 'VII' },
+  { code: '08', name: 'Восьмерка', label: 'VIII' },
+  { code: '09', name: 'Девятка', label: 'IX' },
+  { code: '10', name: 'Десятка', label: 'X' },
+  { code: 'pa', name: 'Паж', label: 'Паж' },
+  { code: 'kn', name: 'Рыцарь', label: 'Рыцарь' },
+  { code: 'qu', name: 'Королева', label: 'Королева' },
+  { code: 'ki', name: 'Король', label: 'Король' }
 ];
 
 const MAJORS = [
@@ -186,6 +231,8 @@ const createFallbackCardDataUri = (title, subtitle, symbol = '✦', accent = '#e
     <rect x="14" y="14" width="272" height="492" rx="14" fill="none" stroke="url(#gold)" stroke-width="3.5"/>
     <rect x="24" y="24" width="252" height="472" rx="10" fill="none" stroke="url(#gold)" stroke-width="1.2" stroke-dasharray="6 4" opacity="0.75"/>
     <circle cx="150" cy="235" r="92" fill="none" stroke="url(#gold)" stroke-width="2" opacity="0.55"/>
+    <circle cx="150" cy="235" r="72" fill="none" stroke="url(#gold)" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.45"/>
+    <polygon points="150,125 174,202 252,202 189,248 212,324 150,278 88,324 111,248 48,202 126,202" fill="url(#gold)" opacity="0.22"/>
     <text x="150" y="92" text-anchor="middle" fill="#ffe3a8" font-family="Philosopher, Georgia, serif" font-size="24" font-weight="bold" letter-spacing="2">${subtitle}</text>
     <text x="150" y="254" text-anchor="middle" fill="#ffe3a8" font-family="serif" font-size="68">${symbol}</text>
     <text x="150" y="432" text-anchor="middle" fill="#fff6e0" font-family="Cormorant Garamond, Georgia, serif" font-size="22" font-weight="bold">${title}</text>
@@ -193,26 +240,18 @@ const createFallbackCardDataUri = (title, subtitle, symbol = '✦', accent = '#e
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
-const buildCardUrls = (primaryCode, altCode = null) => {
-  const list = [
-    `https://cdn.jsdelivr.net/gh/ekelen/tarot-api@master/static/cards/${primaryCode}.jpg`,
-    `https://raw.githubusercontent.com/ekelen/tarot-api/master/static/cards/${primaryCode}.jpg`,
-    `https://sacred-texts.com/tarot/pkt/img/${primaryCode}.jpg`
-  ];
-  if (altCode && altCode !== primaryCode) {
-    list.push(
-      `https://cdn.jsdelivr.net/gh/ekelen/tarot-api@master/static/cards/${altCode}.jpg`,
-      `https://sacred-texts.com/tarot/pkt/img/${altCode}.jpg`
-    );
-  }
-  return list;
-};
+const buildCardUrls = (primaryCode, secondaryCode = primaryCode) => [
+  `https://cdn.jsdelivr.net/gh/ekelen/tarot-api@master/static/cards/${primaryCode}.jpg`,
+  `https://raw.githubusercontent.com/ekelen/tarot-api/master/static/cards/${primaryCode}.jpg`,
+  `https://sacred-texts.com/tarot/pkt/img/${secondaryCode}.jpg`,
+  `https://www.sacred-texts.com/tarot/pkt/img/${secondaryCode}.jpg`
+];
 
 const DECK = (() => {
   const deck = [];
   MAJORS.forEach((name, i) => {
     const code = `ar${i.toString().padStart(2, '0')}`;
-    const urls = buildCardUrls(code);
+    const urls = buildCardUrls(code, code);
     deck.push({
       code,
       name,
@@ -223,12 +262,12 @@ const DECK = (() => {
   });
   SUITS.forEach((suit) =>
     RANKS.forEach((rank) => {
-      const code = `${suit.id}${rank.code}`;
-      const altCode = `${suit.altId}${rank.code}`;
+      const primaryCode = `${suit.id}${rank.code}`;
+      const secondaryCode = `${suit.altId}${rank.code}`;
       const fullName = `${rank.name} ${suit.name}`;
-      const urls = buildCardUrls(code, altCode);
+      const urls = buildCardUrls(primaryCode, secondaryCode);
       deck.push({
-        code,
+        code: primaryCode,
         name: fullName,
         img: urls[0],
         urls,
@@ -322,6 +361,74 @@ const TarotCardImage = ({ card, style = {} }) => {
   );
 };
 
+const RealCloudBackdrop = ({ tableNoAlpha, cloudWebmUrl, cloudWebpUrl }) => (
+  <div
+    style={{
+      position: 'absolute',
+      inset: '-16% -12%',
+      width: '124%',
+      height: '132%',
+      zIndex: -1,
+      pointerEvents: 'none',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}
+  >
+    {!tableNoAlpha ? (
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        webkit-playsinline="true"
+        preload="auto"
+        src={cloudWebmUrl}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          filter: 'drop-shadow(0 20px 45px rgba(0, 0, 0, 0.85))'
+        }}
+      />
+    ) : (
+      <div
+        style={{
+          position: 'relative',
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <img
+          src={cloudWebpUrl}
+          alt=""
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            filter: 'drop-shadow(0 20px 45px rgba(0, 0, 0, 0.85))'
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            width: '48%',
+            aspectRatio: '1 / 1',
+            borderRadius: '50%',
+            background:
+              'radial-gradient(circle, rgba(162, 136, 207, 0.98) 0%, rgba(124, 96, 176, 0.96) 48%, rgba(88, 62, 140, 0.78) 72%, rgba(60, 38, 105, 0) 100%)',
+            filter: 'blur(12px)',
+            boxShadow: 'inset 0 0 40px rgba(255, 225, 160, 0.35)'
+          }}
+        />
+      </div>
+    )}
+  </div>
+);
+
 export default function App() {
   const [view, setView] = useState('landing');
   const [cards, setCards] = useState([]);
@@ -339,17 +446,7 @@ export default function App() {
   const [followUpLoading, setFollowUpLoading] = useState(false);
 
   const [user, setUser] = useState(null);
-  const [syncCode, setSyncCode] = useState(() => {
-    try {
-      const saved = localStorage.getItem('tarot_flox_sync_code');
-      if (saved && saved.trim().length >= 3) return saved.trim().toUpperCase();
-    } catch (e) {}
-    const fresh = generateSyncCode();
-    try {
-      localStorage.setItem('tarot_flox_sync_code', fresh);
-    } catch (e) {}
-    return fresh;
-  });
+  const [syncCode, setSyncCode] = useState(() => getOrCreateSyncCode());
   const [syncInput, setSyncInput] = useState('');
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [copiedSync, setCopiedSync] = useState(false);
@@ -360,7 +457,7 @@ export default function App() {
 
   const [tableNoAlpha, setTableNoAlpha] = useState(false);
 
-  const [mediaUrls, setMediaUrls] = useState({
+  const mediaUrls = {
     phoneWebm: '/phone-loop-muted.webm',
     phoneMp4: '/phone-loop-muted.mp4',
     desktopWebm: '/desktop-loop-muted.webm',
@@ -369,99 +466,18 @@ export default function App() {
     tableWebm: '/table-cloud-loop.webm',
     tableWebp: '/table-on-cloud.webp',
     adviceCloudWebm: '/cloud-loop-alpha.webm'
-  });
-  const [customBgVideoLoaded, setCustomBgVideoLoaded] = useState(false);
-  const [customAudioLoaded, setCustomAudioLoaded] = useState(false);
-  const [showMediaDrawer, setShowMediaDrawer] = useState(false);
+  };
 
   const tableVideoRef = useRef(null);
   const bgmRef = useRef(null);
   const flipAudioRef = useRef(null);
   const fadeIntervalRef = useRef(null);
-  const musicPlayingRef = useRef(false);
 
   const analysisSectionRef = useRef(null);
   const followUpEndRef = useRef(null);
 
   const audioCtxRef = useRef(null);
-  const synthMasterGainRef = useRef(null);
-  const synthMelodyTimerRef = useRef(null);
-
-  useEffect(() => {
-    musicPlayingRef.current = musicPlaying;
-  }, [musicPlaying]);
-
-  const startAllBackgroundVideos = () => {
-    const bgEl = document.getElementById('bgVideoEl');
-    if (bgEl) {
-      bgEl.muted = true;
-      bgEl.defaultMuted = true;
-      bgEl.setAttribute('muted', '');
-      bgEl.setAttribute('playsinline', '');
-      bgEl.setAttribute('webkit-playsinline', '');
-      bgEl.play().catch(() => {});
-    }
-    const allVideos = document.querySelectorAll('video');
-    allVideos.forEach((v) => {
-      v.muted = true;
-      v.defaultMuted = true;
-      v.play().catch(() => {});
-    });
-  };
-
-  useEffect(() => {
-    startAllBackgroundVideos();
-    const unlockMobileMedia = () => {
-      startAllBackgroundVideos();
-    };
-    window.addEventListener('touchstart', unlockMobileMedia, { passive: true, once: true });
-    window.addEventListener('click', unlockMobileMedia, { passive: true, once: true });
-    return () => {
-      window.removeEventListener('touchstart', unlockMobileMedia);
-      window.removeEventListener('click', unlockMobileMedia);
-    };
-  }, [view, mediaUrls]);
-
-  useEffect(() => {
-    const wasPlayingBeforeHideRef = { current: false };
-
-    const handleHide = () => {
-      if (musicPlayingRef.current) {
-        wasPlayingBeforeHideRef.current = true;
-        pauseAllMusic();
-      }
-    };
-
-    const handleShow = () => {
-      startAllBackgroundVideos();
-      if (wasPlayingBeforeHideRef.current && !document.hidden) {
-        wasPlayingBeforeHideRef.current = false;
-        startMusicWithFade();
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        handleHide();
-      } else {
-        handleShow();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('pagehide', handleHide);
-    window.addEventListener('pageshow', handleShow);
-    window.addEventListener('blur', handleHide);
-    window.addEventListener('focus', handleShow);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('pagehide', handleHide);
-      window.removeEventListener('pageshow', handleShow);
-      window.removeEventListener('blur', handleHide);
-      window.removeEventListener('focus', handleShow);
-    };
-  }, []);
+  const wasPlayingBeforeHideRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -498,44 +514,52 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    let localItems = [];
     try {
       const savedLocal = localStorage.getItem('tarotHistory_flox_v2');
       if (savedLocal) {
-        localItems = JSON.parse(savedLocal);
-        setHistory(localItems);
+        const parsed = JSON.parse(savedLocal);
+        setHistory(parsed);
+        if (parsed.length > 0 && syncCode) {
+          pushHistoryToCloudKV(syncCode, parsed);
+        }
       }
     } catch (e) {}
+  }, []);
 
-    if (syncCode && syncCode.trim().length >= 3) {
-      fetchCloudReadingsByCode(syncCode).then((cloudItems) => {
-        if (cloudItems.length > 0) {
-          setHistory((prev) => {
-            const mergedMap = new Map();
-            [...cloudItems, ...prev].forEach((it) => {
-              if (it && it.id) mergedMap.set(it.id, it);
-            });
-            const merged = Array.from(mergedMap.values()).sort((a, b) => b.id - a.id);
-            try {
-              localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(merged));
-            } catch (e) {}
-            return merged;
-          });
-        } else if (localItems.length > 0) {
-          pushCloudReadingsByCode(syncCode, localItems);
-        }
+  useEffect(() => {
+    if (!syncCode) return;
+    let active = true;
+    pullHistoryFromCloudKV(syncCode).then((cloudItems) => {
+      if (!active || !cloudItems || cloudItems.length === 0) return;
+      setHistory((prev) => {
+        const mergedMap = new Map();
+        [...cloudItems, ...prev].forEach((it) => {
+          if (it && it.id) mergedMap.set(it.id, it);
+        });
+        const merged = Array.from(mergedMap.values()).sort((a, b) => b.id - a.id);
+        try {
+          localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(merged));
+        } catch (e) {}
+        return merged;
       });
-    }
+    });
+    return () => {
+      active = false;
+    };
   }, [syncCode]);
 
   useEffect(() => {
     if (!user || !db) return;
+
     const userColRef = collection(db, 'artifacts', appId, 'users', user.uid, 'readings');
     const unsubPrivate = onSnapshot(
       userColRef,
       (snapshot) => {
         const items = [];
-        snapshot.forEach((docSnap) => items.push(docSnap.data()));
+        snapshot.forEach((docSnap) => {
+          items.push(docSnap.data());
+        });
+        items.sort((a, b) => (b.id || 0) - (a.id || 0));
         if (items.length > 0) {
           setHistory((prev) => {
             const mergedMap = new Map();
@@ -552,43 +576,79 @@ export default function App() {
       },
       () => {}
     );
-    return () => unsubPrivate();
-  }, [user]);
+
+    let unsubSync = () => {};
+    if (syncCode && syncCode.trim().length >= 3) {
+      const publicColRef = collection(db, 'artifacts', appId, 'public', 'data', 'readings_by_code');
+      unsubSync = onSnapshot(
+        publicColRef,
+        (snapshot) => {
+          const codeUpper = syncCode.trim().toUpperCase();
+          const syncedItems = [];
+          snapshot.forEach((docSnap) => {
+            const d = docSnap.data();
+            if (d && d.syncCode === codeUpper) {
+              syncedItems.push(d);
+            }
+          });
+          if (syncedItems.length > 0) {
+            setHistory((prev) => {
+              const mergedMap = new Map();
+              [...syncedItems, ...prev].forEach((it) => {
+                if (it && it.id) mergedMap.set(it.id, it);
+              });
+              const merged = Array.from(mergedMap.values()).sort((a, b) => b.id - a.id);
+              try {
+                localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
+          }
+        },
+        () => {}
+      );
+    }
+
+    return () => {
+      unsubPrivate();
+      unsubSync();
+    };
+  }, [user, syncCode]);
 
   const saveReadingToStorage = async (readingObj) => {
-    const codeUpper = (syncCode || generateSyncCode()).trim().toUpperCase();
+    const codeUpper = (syncCode || getOrCreateSyncCode()).trim().toUpperCase();
     const itemToSave = { ...readingObj, syncCode: codeUpper };
 
-    let nextHistoryList = [];
     setHistory((prev) => {
       const filtered = prev.filter((item) => item.id !== itemToSave.id);
-      nextHistoryList = [itemToSave, ...filtered].sort((a, b) => b.id - a.id);
+      const updated = [itemToSave, ...filtered].sort((a, b) => b.id - a.id);
       try {
-        localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(nextHistoryList));
+        localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(updated));
       } catch (e) {}
-      return nextHistoryList;
+      pushHistoryToCloudKV(codeUpper, updated);
+      return updated;
     });
-
-    await pushCloudReadingsByCode(codeUpper, nextHistoryList);
 
     if (user && db) {
       try {
         const docId = String(itemToSave.id);
         await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'readings', docId), itemToSave);
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'readings_by_code', `${codeUpper}_${docId}`), itemToSave);
       } catch (e) {}
     }
   };
 
   const deleteHistoryItem = async (id, e) => {
     if (e) e.stopPropagation();
+    const codeUpper = (syncCode || getOrCreateSyncCode()).trim().toUpperCase();
 
-    let nextHistoryList = [];
     setHistory((prev) => {
-      nextHistoryList = prev.filter((item) => item.id !== id);
+      const updated = prev.filter((item) => item.id !== id);
       try {
-        localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(nextHistoryList));
+        localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(updated));
       } catch (err) {}
-      return nextHistoryList;
+      pushHistoryToCloudKV(codeUpper, updated);
+      return updated;
     });
 
     if (selectedHistoryItem && selectedHistoryItem.id === id) {
@@ -596,12 +656,11 @@ export default function App() {
       setView('history');
     }
 
-    const codeUpper = (syncCode || '').trim().toUpperCase();
-    await pushCloudReadingsByCode(codeUpper, nextHistoryList);
-
     if (user && db) {
+      const docId = String(id);
       try {
-        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'readings', String(id)));
+        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'readings', docId));
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'readings_by_code', `${codeUpper}_${docId}`));
       } catch (err) {}
     }
   };
@@ -621,40 +680,109 @@ export default function App() {
     }
   }, []);
 
+  const startAllBackgroundVideos = () => {
+    try {
+      const bgEl = document.getElementById('bgVideoEl');
+      const allVideos = [
+        bgEl,
+        tableVideoRef.current,
+        ...Array.from(document.querySelectorAll('video'))
+      ];
+      allVideos.forEach((v) => {
+        if (v) {
+          v.muted = true;
+          v.defaultMuted = true;
+          v.playsInline = true;
+          v.setAttribute('muted', '');
+          v.setAttribute('playsinline', '');
+          v.setAttribute('webkit-playsinline', '');
+          if (v.paused) {
+            v.play().catch(() => {});
+          }
+        }
+      });
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    startAllBackgroundVideos();
+    const timer = setTimeout(startAllBackgroundVideos, 300);
+
+    const onFirstTouch = () => {
+      startAllBackgroundVideos();
+    };
+    window.addEventListener('touchstart', onFirstTouch, { passive: true });
+    window.addEventListener('click', onFirstTouch, { passive: true });
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('touchstart', onFirstTouch);
+      window.removeEventListener('click', onFirstTouch);
+    };
+  }, [view]);
+
+  useEffect(() => {
+    const handleVisibilityOrHide = () => {
+      if (document.hidden) {
+        if (bgmRef.current && !bgmRef.current.paused) {
+          wasPlayingBeforeHideRef.current = true;
+          if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+          bgmRef.current.pause();
+        }
+      } else {
+        if (wasPlayingBeforeHideRef.current && musicPlaying && bgmRef.current) {
+          wasPlayingBeforeHideRef.current = false;
+          bgmRef.current.play().catch(() => {});
+        }
+        startAllBackgroundVideos();
+      }
+    };
+
+    const handlePageHide = () => {
+      if (bgmRef.current && !bgmRef.current.paused) {
+        wasPlayingBeforeHideRef.current = true;
+        if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+        bgmRef.current.pause();
+      }
+    };
+
+    const handleWindowBlur = () => {
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '')) {
+        if (bgmRef.current && !bgmRef.current.paused) {
+          wasPlayingBeforeHideRef.current = true;
+          if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+          bgmRef.current.pause();
+        }
+      }
+    };
+
+    const handleWindowFocus = () => {
+      if (wasPlayingBeforeHideRef.current && musicPlaying && bgmRef.current) {
+        wasPlayingBeforeHideRef.current = false;
+        bgmRef.current.play().catch(() => {});
+      }
+      startAllBackgroundVideos();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrHide);
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrHide);
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [musicPlaying]);
+
   useEffect(() => {
     return () => {
       if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
-      if (synthMelodyTimerRef.current) clearInterval(synthMelodyTimerRef.current);
+      if (bgmRef.current) bgmRef.current.pause();
     };
   }, []);
-
-  const handleFileUpload = (key, e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setMediaUrls((prev) => ({ ...prev, [key]: url }));
-
-    if (key === 'bgmMp3') {
-      setCustomAudioLoaded(true);
-      stopFallbackSynth();
-      setTimeout(() => {
-        if (bgmRef.current) {
-          bgmRef.current.load();
-          if (musicPlaying) startMusicWithFade();
-        }
-      }, 100);
-    } else if (key === 'tableWebm') {
-      setTableNoAlpha(false);
-      setTimeout(() => {
-        if (tableVideoRef.current) {
-          tableVideoRef.current.load();
-          tableVideoRef.current.play().catch(() => {});
-        }
-      }, 100);
-    } else {
-      setCustomBgVideoLoaded(true);
-    }
-  };
 
   const playCardFlipSound = (cardIndex = 0) => {
     try {
@@ -714,128 +842,41 @@ export default function App() {
     } catch (e) {}
   };
 
-  const startFallbackSynth = () => {
-    try {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      const ctx = audioCtxRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
-
-      if (!synthMasterGainRef.current) {
-        const master = ctx.createGain();
-        master.gain.setValueAtTime(0.001, ctx.currentTime);
-        master.connect(ctx.destination);
-        synthMasterGainRef.current = master;
-
-        const padFreqs = [138.59, 207.65, 277.18, 329.63, 415.3];
-        padFreqs.forEach((f, idx) => {
-          const osc = ctx.createOscillator();
-          const filter = ctx.createBiquadFilter();
-          const oscGain = ctx.createGain();
-
-          osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
-          osc.frequency.setValueAtTime(f, ctx.currentTime);
-
-          filter.type = 'lowpass';
-          filter.frequency.setValueAtTime(650, ctx.currentTime);
-
-          oscGain.gain.setValueAtTime(0.12 / padFreqs.length, ctx.currentTime);
-
-          osc.connect(filter);
-          filter.connect(oscGain);
-          oscGain.connect(master);
-          osc.start();
-        });
-
-        const melodyNotes = [554.37, 659.25, 830.61, 739.99, 659.25, 493.88, 554.37, 415.3];
-        let noteIdx = 0;
-        synthMelodyTimerRef.current = setInterval(() => {
-          if (!synthMasterGainRef.current || !audioCtxRef.current) return;
-          const now = audioCtxRef.current.currentTime;
-          const noteFreq = melodyNotes[noteIdx % melodyNotes.length];
-          noteIdx++;
-
-          const noteOsc = audioCtxRef.current.createOscillator();
-          const noteGain = audioCtxRef.current.createGain();
-          noteOsc.type = 'sine';
-          noteOsc.frequency.setValueAtTime(noteFreq, now);
-
-          noteGain.gain.setValueAtTime(0.0001, now);
-          noteGain.gain.linearRampToValueAtTime(0.085, now + 0.08);
-          noteGain.gain.exponentialRampToValueAtTime(0.0001, now + 3.4);
-
-          noteOsc.connect(noteGain);
-          noteGain.connect(synthMasterGainRef.current);
-          noteOsc.start(now);
-          noteOsc.stop(now + 3.5);
-        }, 2200);
-      }
-    } catch (e) {}
-  };
-
-  const stopFallbackSynth = () => {
-    if (synthMelodyTimerRef.current) {
-      clearInterval(synthMelodyTimerRef.current);
-      synthMelodyTimerRef.current = null;
-    }
-    if (synthMasterGainRef.current && audioCtxRef.current) {
-      try {
-        synthMasterGainRef.current.disconnect();
-      } catch (e) {}
-      synthMasterGainRef.current = null;
-    }
-  };
-
   const startMusicWithFade = () => {
+    startAllBackgroundVideos();
+
     const a = bgmRef.current;
+    if (!a) return;
     if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
 
-    let v = 0;
-    setMusicVolume(0);
-    setMusicPlaying(true);
-
-    const runFadeInterval = (applyVolume) => {
-      fadeIntervalRef.current = setInterval(() => {
-        v = Math.min(0.6, +(v + 0.03).toFixed(2));
-        applyVolume(v);
-        setMusicVolume(v);
-        if (v >= 0.6) {
-          clearInterval(fadeIntervalRef.current);
-        }
-      }, 100);
-    };
-
-    if (a) {
-      a.volume = 0;
-      const playPromise = a.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            stopFallbackSynth();
-            runFadeInterval((val) => {
-              if (bgmRef.current) bgmRef.current.volume = val;
-            });
-          })
-          .catch(() => {
-            startFallbackSynth();
-            runFadeInterval((val) => {
-              if (synthMasterGainRef.current && audioCtxRef.current) {
-                synthMasterGainRef.current.gain.setValueAtTime(val, audioCtxRef.current.currentTime);
-              }
-            });
-          });
-      }
+    a.volume = 0;
+    const playPromise = a.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          setMusicPlaying(true);
+          let v = 0;
+          setMusicVolume(0);
+          fadeIntervalRef.current = setInterval(() => {
+            v = Math.min(0.6, +(v + 0.03).toFixed(2));
+            if (bgmRef.current) bgmRef.current.volume = v;
+            setMusicVolume(v);
+            if (v >= 0.6) {
+              clearInterval(fadeIntervalRef.current);
+            }
+          }, 100);
+        })
+        .catch(() => {
+          setMusicPlaying(false);
+        });
     }
   };
 
   const pauseAllMusic = () => {
+    wasPlayingBeforeHideRef.current = false;
     if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
     if (bgmRef.current && !bgmRef.current.paused) {
       bgmRef.current.pause();
-    }
-    if (synthMasterGainRef.current && audioCtxRef.current) {
-      synthMasterGainRef.current.gain.setValueAtTime(0.0001, audioCtxRef.current.currentTime);
     }
     setMusicPlaying(false);
   };
@@ -856,8 +897,7 @@ export default function App() {
     setView('transition');
     setTimeout(() => {
       setView('table');
-      setTimeout(() => startAllBackgroundVideos(), 120);
-    }, 1100);
+    }, 1200);
   };
 
   const performReading = async (currentQuestion) => {
@@ -909,19 +949,9 @@ export default function App() {
 - Запрещено использовать заголовки с решетками ###.
 
 СТРУКТУРА ГЛУБОКОГО АНАЛИЗА:
-
-1. Ядро ситуации и прямой ответ по сути вопроса:
-Сразу в первом абзаце дай прямой, концентрированный взгляд на вопрос на основе баланса стихий и старших арканов на столе. Что происходит на самом деле прямо сейчас?
-
-2. Глубокий синтез и связка 5 карт (не по отдельности, а как единая цепь):
-Покажи, как карты взаимодействуют, меняют и дополняют друг друга:
-- Карты 1 и 2 (исходный импульс и текущая реальность): что привело к этому моменту и в каких реальных физических/эмоциональных условиях находится ситуация или человек прямо сейчас.
-- Карта 3 (центральный узел расклада): сердцевина происходящего, главный фактор, на котором все держится.
-- Карты 4 и 5 (скрытые процессы, удержание и итоговый вектор): как меняется состояние, что защищает или, наоборот, давит, и к какому реальному исходу стягивается вся цепочка.
-Объясняй живым человеческим языком, почему соседство одной карты с другой дает именно такой смысл в контексте вопроса.
-
-3. Итоговый вывод:
-Четкое, честное и глубокое резюме без воды и без двусмысленных отписок.
+1. Ядро ситуации и прямой ответ по сути вопроса сразу в первом абзаце.
+2. Глубокий синтез и связка 5 карт как единой цепи (1 и 2 — основа и реальность, 3 — центральный узел, 4 и 5 — динамика, удержание и итог).
+3. Четкий итоговый вывод без воды.
 
 ОБЯЗАТЕЛЬНО В САМОМ КОНЦЕ:
 Добавь строку "ГЛАВНЫЙ СОВЕТ:" и напиши 2-3 четких, конкретных, практических действия в повелительном наклонении (что человеку реально предпринять, проверить или сделать), без абстрактной философии.`;
@@ -1003,22 +1033,28 @@ export default function App() {
     try {
       const cleanKey = FAL_KEY.trim();
 
+      // Собираем коды уже выпавших карт в этой ветке (базовый расклад + прошлые уточнения), чтобы не повторяться
       const usedCodes = new Set((targetReading.cards || []).map((c) => c.code));
       (targetReading.followUps || []).forEach((fu) => {
         (fu.cards || []).forEach((c) => usedCodes.add(c.code));
       });
+
       const availableDeck = DECK.filter((c) => !usedCodes.has(c.code));
       const pool = availableDeck.length >= 5 ? availableDeck : DECK;
       const followUpCards = [...pool].sort(() => 0.5 - Math.random()).slice(0, 5);
       followUpCards.forEach((c) => preloadSingleCard(c));
 
+      for (let i = 0; i < 5; i++) {
+        setTimeout(() => playCardFlipSound(i), i * 110);
+      }
+
       const threadHistoryText = (targetReading.followUps || [])
         .map((item, idx) => {
-          const fuCardsStr =
+          const cardsStr =
             item.cards && item.cards.length > 0
-              ? `\nВыпавшие уточняющие карты (${item.cards.map((c) => c.name).join(', ')})`
+              ? `\nВыпавшие карты уточнения: ${item.cards.map((c) => c.name).join(', ')}`
               : '';
-          return `Уточнение ${idx + 1}: "${item.q}"${fuCardsStr}\nОтвет таролога: "${item.a}"`;
+          return `Уточнение ${idx + 1}: "${item.q}"${cardsStr}\nОтвет таролога: "${item.a}"`;
         })
         .join('\n\n');
 
@@ -1052,10 +1088,6 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
       });
       const answerText = cleanAnalysisText(rawAnswer);
       if (!answerText) throw new Error('Пустой ответ');
-
-      for (let i = 0; i < 5; i++) {
-        setTimeout(() => playCardFlipSound(i), i * 110);
-      }
 
       const newFollowUpEntry = {
         id: Date.now(),
@@ -1120,8 +1152,8 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
     setSyncInput('');
     setShowSyncModal(false);
 
-    const cloudItems = await fetchCloudReadingsByCode(clean);
-    if (cloudItems.length > 0) {
+    const cloudItems = await pullHistoryFromCloudKV(clean);
+    if (cloudItems && cloudItems.length > 0) {
       setHistory((prev) => {
         const mergedMap = new Map();
         [...cloudItems, ...prev].forEach((it) => {
@@ -1166,33 +1198,23 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
   const globalStyles = `
     @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Philosopher:wght@400;700&display=swap');
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    body {
-      margin: 0;
-      background: radial-gradient(circle at 50% 40%, #1d1038 0%, #0d061c 65%, #060310 100%);
-      color: #f8f1e5;
-      overflow-x: hidden;
-    }
+    body { margin: 0; background: #160c28; color: #f8f1e5; overflow-x: hidden; }
     h1, h2, h3, .mystic-font { font-family: 'Philosopher', sans-serif; }
     p, .text-font, input, textarea, button { font-family: 'Cormorant Garamond', serif; }
 
-    .bg-video-wrapper {
+    .bg {
       position: fixed;
       inset: 0;
       width: 100%;
       height: 100%;
+      object-fit: cover;
       z-index: -1;
       pointer-events: none;
-      overflow: hidden;
     }
-    .bg-video-wrapper video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      pointer-events: none;
-    }
+
     video::-webkit-media-controls,
-    video::-webkit-media-controls-enclosure,
     video::-webkit-media-controls-panel,
+    video::-webkit-media-controls-play-button,
     video::-webkit-media-controls-start-playback-button {
       display: none !important;
       -webkit-appearance: none !important;
@@ -1200,40 +1222,11 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
       pointer-events: none !important;
     }
 
-    @keyframes hint-bounce {
-      0%, 100% { transform: translateX(0px); }
-      50% { transform: translateX(-6px); }
-    }
-
-    .music-control-wrap {
+    #musicBtn {
       position: fixed;
       right: 18px;
       bottom: 18px;
       z-index: 50;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .music-hint-badge {
-      background: linear-gradient(135deg, rgba(35, 15, 65, 0.92), rgba(130, 88, 25, 0.92));
-      border: 1.5px solid #e5b05c;
-      color: #ffe8b8;
-      padding: 7px 14px;
-      border-radius: 22px;
-      font-family: 'Philosopher', sans-serif;
-      font-size: 0.95rem;
-      letter-spacing: 0.8px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8), 0 0 15px rgba(229, 176, 92, 0.45);
-      animation: hint-bounce 1.8s ease-in-out infinite;
-      cursor: pointer;
-      white-space: nowrap;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    #musicBtn {
       width: 52px;
       height: 52px;
       border-radius: 50%;
@@ -1247,56 +1240,38 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
       cursor: pointer;
       box-shadow: 0 0 25px rgba(229, 176, 92, 0.55);
       transition: all 0.3s ease;
-      flex-shrink: 0;
     }
     #musicBtn:hover {
       transform: scale(1.08);
       box-shadow: 0 0 35px rgba(229, 176, 92, 0.9);
     }
 
-    .landing-cloud-hero {
-      position: relative;
-      width: min(94vw, 880px);
-      min-height: clamp(360px, 54vh, 520px);
+    .music-hint-badge {
+      position: fixed;
+      right: 78px;
+      bottom: 22px;
+      z-index: 50;
       display: flex;
-      flex-direction: column;
       align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: clamp(2.2rem, 5vw, 3.6rem) clamp(1.5rem, 4vw, 3rem);
+      gap: 8px;
+      background: linear-gradient(135deg, rgba(32, 14, 62, 0.94), rgba(92, 60, 20, 0.94));
+      border: 1.5px solid #e5b05c;
+      color: #ffe3a8;
+      padding: 8px 16px;
+      border-radius: 30px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      box-shadow: 0 0 22px rgba(229, 176, 92, 0.55);
+      animation: musicHintBob 1.8s ease-in-out infinite;
+      user-select: none;
+      white-space: nowrap;
     }
-    .landing-cloud-video {
-      position: absolute;
-      inset: -12% -10%;
-      width: 120%;
-      height: 124%;
-      object-fit: contain;
-      z-index: 0;
-      pointer-events: none;
-      animation: tarot-sway 7s ease-in-out infinite;
-      filter: drop-shadow(0 18px 45px rgba(0, 0, 0, 0.85));
-    }
-    .landing-cloud-photo-mobile {
-      position: absolute;
-      inset: -10% -8%;
-      width: 116%;
-      height: 120%;
-      object-fit: contain;
-      z-index: 0;
-      pointer-events: none;
-      animation: tarot-sway 7s ease-in-out infinite;
-      filter: drop-shadow(0 18px 45px rgba(0, 0, 0, 0.9));
-      -webkit-mask-image: radial-gradient(ellipse 46% 42% at 50% 50%, #000 58%, transparent 94%);
-      mask-image: radial-gradient(ellipse 46% 42% at 50% 50%, #000 58%, transparent 94%);
-    }
-    .landing-cloud-soft-aura {
-      position: absolute;
-      inset: 8% 10%;
-      border-radius: 50%;
-      background: radial-gradient(ellipse at center, rgba(24, 12, 48, 0.88) 0%, rgba(44, 22, 82, 0.72) 48%, rgba(24, 12, 48, 0) 78%);
-      filter: blur(18px);
-      z-index: 0;
-      pointer-events: none;
+
+    @keyframes musicHintBob {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(-7px); }
     }
 
     .tarot-stage {
@@ -1306,45 +1281,45 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
       aspect-ratio: 1920 / 1098;
       margin: 0 auto;
       user-select: none;
-      overflow: visible;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .tarot-stage video,
     .tarot-stage img.fallback {
       position: absolute;
-      top: 0;
-      left: 50%;
+      inset: 0;
       width: 100%;
       height: 100%;
-      transform: translateX(-48.7%);
       object-fit: contain;
+      object-position: center center;
       pointer-events: none;
+      margin: 0 auto;
+      transform: translateX(1.3%);
     }
-    .tarot-stage .sway-anim {
-      animation: tarot-sway-centered 6s ease-in-out infinite;
+    .tarot-stage img.fallback {
+      display: none;
+      animation: tarot-sway 6s ease-in-out infinite;
     }
     .tarot-stage.no-alpha video {
       display: none;
     }
+    .tarot-stage.no-alpha img.fallback {
+      display: block;
+    }
 
     @keyframes tarot-sway {
       0%, 100% { transform: translateY(0.6%) rotate(0deg); }
-      25% { transform: translateY(0) rotate(0.35deg); }
+      25% { transform: translateY(0) rotate(0.4deg); }
       50% { transform: translateY(-0.6%) rotate(0deg); }
-      75% { transform: translateY(0) rotate(-0.35deg); }
-    }
-
-    @keyframes tarot-sway-centered {
-      0%, 100% { transform: translateX(-48.7%) translateY(0.6%) rotate(0deg); }
-      25% { transform: translateX(-48.7%) translateY(0) rotate(0.4deg); }
-      50% { transform: translateX(-48.7%) translateY(-0.6%) rotate(0deg); }
-      75% { transform: translateX(-48.7%) translateY(0) rotate(-0.4deg); }
+      75% { transform: translateY(0) rotate(-0.4deg); }
     }
 
     .tarot-spread {
       position: absolute;
       left: 50%;
-      top: 48.8%;
-      width: 44%;
+      top: 49%;
+      width: 46%;
       transform: translate(-50%, -50%);
       display: flex;
       flex-direction: row;
@@ -1364,26 +1339,22 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
 
     @media (max-width: 768px) {
       .tarot-stage {
-        width: 100%;
-        transform: scale(1.14);
-        margin: 12px auto;
+        width: 112%;
+        margin-left: -6%;
       }
       .tarot-spread {
-        width: 52%;
+        width: 54%;
         gap: 1.5%;
       }
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .tarot-stage .sway-anim,
-      .landing-cloud-video,
-      .landing-cloud-photo-mobile,
-      .music-hint-badge { animation: none; }
+      .tarot-stage img.fallback { animation: none; }
     }
 
     @keyframes pulse-gold {
-      0%, 100% { box-shadow: 0 0 28px rgba(229,176,92,0.6), inset 0 0 15px rgba(229,176,92,0.25); transform: scale(1); }
-      50% { box-shadow: 0 0 55px rgba(229,176,92,0.95), inset 0 0 25px rgba(229,176,92,0.45); transform: scale(1.03); }
+      0%, 100% { box-shadow: 0 0 25px rgba(229,176,92,0.5), inset 0 0 15px rgba(229,176,92,0.2); transform: scale(1); }
+      50% { box-shadow: 0 0 50px rgba(229,176,92,0.9), inset 0 0 25px rgba(229,176,92,0.4); transform: scale(1.025); }
     }
     @keyframes disperse {
       0% { opacity: 1; transform: scale(1); filter: blur(0px); }
@@ -1466,22 +1437,44 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
     }
   `;
 
-  const bgVideoMarkup = `
-    <video id="bgVideoEl" class="bg" autoplay muted loop playsinline webkit-playsinline preload="auto" disablepictureinpicture>
-      <source media="(orientation: portrait)" src="${mediaUrls.phoneMp4}" type="video/mp4" />
-      <source media="(orientation: portrait)" src="${mediaUrls.phoneWebm}" type="video/webm" />
-      <source src="${mediaUrls.desktopMp4}" type="video/mp4" />
-      <source src="${mediaUrls.desktopWebm}" type="video/webm" />
-    </video>
-  `;
-
   const renderBackgroundLayer = () => (
     <>
       <style>{globalStyles}</style>
 
       <div
-        className="bg-video-wrapper"
-        dangerouslySetInnerHTML={{ __html: bgVideoMarkup }}
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          zIndex: -1,
+          pointerEvents: 'none',
+          overflow: 'hidden',
+          background: 'radial-gradient(circle at 50% 40%, #241445 0%, #120924 60%, #070312 100%)'
+        }}
+        dangerouslySetInnerHTML={{
+          __html: `
+            <video
+              id="bgVideoEl"
+              class="bg"
+              autoplay
+              muted
+              defaultMuted
+              loop
+              playsinline
+              webkit-playsinline="true"
+              preload="auto"
+              disablepictureinpicture
+              style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;pointer-events:none;"
+            >
+              <source media="(orientation: portrait)" src="${mediaUrls.phoneMp4}" type="video/mp4" />
+              <source media="(orientation: portrait)" src="${mediaUrls.phoneWebm}" type="video/webm" />
+              <source src="${mediaUrls.desktopMp4}" type="video/mp4" />
+              <source src="${mediaUrls.desktopWebm}" type="video/webm" />
+            </video>
+          `
+        }}
       />
 
       <audio id="bgm" ref={bgmRef} src={mediaUrls.bgmMp3} loop preload="none" />
@@ -1492,174 +1485,25 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
         preload="auto"
       />
 
-      <div className="music-control-wrap">
-        {!musicPlaying && (
-          <div
-            className="music-hint-badge"
-            onClick={toggleMusic}
-            role="button"
-            tabIndex={0}
-          >
-            <span>Нажми</span>
-            <span style={{ fontSize: '1.1rem', color: '#ffe3a8' }}>➔</span>
-          </div>
-        )}
-        <button
-          id="musicBtn"
+      {!musicPlaying && (
+        <div
           onClick={toggleMusic}
-          aria-label="Музыка"
-          title={musicPlaying ? `Музыка включена (${Math.round(musicVolume * 100)}%)` : 'Включить музыку'}
+          className="music-hint-badge mystic-font"
+          title="Нажмите, чтобы включить космическую музыку"
         >
-          {musicPlaying ? '♪' : <VolumeX size={20} />}
-        </button>
-      </div>
-
-      {IS_SANDBOX_PREVIEW && (
-        <div style={{ position: 'fixed', top: '12px', left: '12px', zIndex: 60 }}>
-          <button
-            onClick={() => setShowMediaDrawer(!showMediaDrawer)}
-            className="text-font"
-            style={{
-              background: 'rgba(15, 9, 32, 0.78)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(229, 176, 92, 0.45)',
-              color: '#e5b05c',
-              padding: '7px 13px',
-              borderRadius: '20px',
-              fontSize: '0.88rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: 'pointer'
-            }}
-          >
-            <Film size={14} />
-            {customBgVideoLoaded || customAudioLoaded ? 'Файлы подключены' : 'Файлы / превью'}
-          </button>
-
-          {showMediaDrawer && (
-            <div
-              className="glass-panel text-font"
-              style={{
-                marginTop: '8px',
-                width: 'min(92vw, 330px)',
-                padding: '15px',
-                fontSize: '0.92rem',
-                borderRadius: '18px'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <strong className="mystic-font" style={{ color: '#ffe3a8', fontSize: '1rem' }}>
-                  Подключить ваши медиафайлы
-                </strong>
-                <button
-                  onClick={() => setShowMediaDrawer(false)}
-                  style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer' }}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: 'rgba(255,255,255,0.06)',
-                    padding: '7px 11px',
-                    borderRadius: '10px',
-                    border: '1px solid rgba(229,176,92,0.35)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Film size={14} color="#e5b05c" /> Стол на облаке (table-cloud-loop.webm)
-                  </span>
-                  <Upload size={14} color="#e5b05c" />
-                  <input
-                    type="file"
-                    accept="video/webm,video/mp4"
-                    style={{ display: 'none' }}
-                    onChange={(e) => handleFileUpload('tableWebm', e)}
-                  />
-                </label>
-
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: 'rgba(255,255,255,0.06)',
-                    padding: '7px 11px',
-                    borderRadius: '10px',
-                    border: '1px solid rgba(229,176,92,0.35)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Film size={14} color="#e5b05c" /> Облако совета (cloud-loop-alpha.webm)
-                  </span>
-                  <Upload size={14} color="#e5b05c" />
-                  <input
-                    type="file"
-                    accept="video/webm,video/mp4"
-                    style={{ display: 'none' }}
-                    onChange={(e) => handleFileUpload('adviceCloudWebm', e)}
-                  />
-                </label>
-
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: 'rgba(255,255,255,0.06)',
-                    padding: '7px 11px',
-                    borderRadius: '10px',
-                    border: '1px solid rgba(229,176,92,0.35)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Film size={14} color="#e5b05c" /> Видео-фон (ПК / Телефон)
-                  </span>
-                  {customBgVideoLoaded ? <Check size={14} color="#5ce58a" /> : <Upload size={14} color="#e5b05c" />}
-                  <input
-                    type="file"
-                    accept="video/mp4,video/webm"
-                    style={{ display: 'none' }}
-                    onChange={(e) => handleFileUpload('desktopMp4', e)}
-                  />
-                </label>
-
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: 'rgba(255,255,255,0.06)',
-                    padding: '7px 11px',
-                    borderRadius: '10px',
-                    border: '1px solid rgba(229,176,92,0.35)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Music size={14} color="#e5b05c" /> Музыка (tarot-ambient-loop.mp3)
-                  </span>
-                  {customAudioLoaded ? <Check size={14} color="#5ce58a" /> : <Upload size={14} color="#e5b05c" />}
-                  <input
-                    type="file"
-                    accept="audio/mp3,audio/mpeg,audio/wav"
-                    style={{ display: 'none' }}
-                    onChange={(e) => handleFileUpload('bgmMp3', e)}
-                  />
-                </label>
-              </div>
-            </div>
-          )}
+          <span>Нажми</span>
+          <span style={{ fontSize: '1.35rem', lineHeight: 1 }}>➔</span>
         </div>
       )}
+
+      <button
+        id="musicBtn"
+        onClick={toggleMusic}
+        aria-label="Музыка"
+        title={musicPlaying ? `Музыка включена (${Math.round(musicVolume * 100)}%)` : 'Включить музыку'}
+      >
+        {musicPlaying ? '♪' : <VolumeX size={20} />}
+      </button>
     </>
   );
 
@@ -1689,7 +1533,7 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
       </p>
 
       {activeFollowUps && activeFollowUps.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '22px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '22px' }}>
           {activeFollowUps.map((item) => (
             <div
               key={item.id}
@@ -1835,48 +1679,36 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
         {renderBackgroundLayer()}
 
         <div
-          className="landing-cloud-hero"
           style={{
+            position: 'relative',
             zIndex: 2,
-            animation: view === 'transition' ? 'disperse 1.1s forwards' : 'none'
+            textAlign: 'center',
+            width: 'min(98vw, 900px)',
+            minHeight: '340px',
+            aspectRatio: '16 / 10',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 'clamp(1.4rem, 4vw, 3.5rem)',
+            animation: view === 'transition' ? 'disperse 1.2s forwards' : 'tarot-sway 6s ease-in-out infinite'
           }}
         >
-          {!tableNoAlpha ? (
-            <video
-              autoPlay
-              muted
-              loop
-              playsInline
-              webkit-playsinline="true"
-              className="landing-cloud-video"
-              src={mediaUrls.adviceCloudWebm}
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
-            />
-          ) : (
-            <img
-              src={mediaUrls.tableWebp}
-              alt=""
-              className="landing-cloud-photo-mobile"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
-            />
-          )}
-
-          <div className="landing-cloud-soft-aura" />
+          <RealCloudBackdrop
+            tableNoAlpha={tableNoAlpha}
+            cloudWebmUrl={mediaUrls.adviceCloudWebm}
+            cloudWebpUrl={mediaUrls.tableWebp}
+          />
 
           <h1
             className="mystic-font"
             style={{
-              position: 'relative',
-              zIndex: 1,
-              fontSize: 'clamp(2.2rem, 5.5vw, 3.9rem)',
-              color: '#ffe6ad',
-              margin: '0 0 14px 0',
-              lineHeight: 1.18,
-              textShadow: '0 4px 18px rgba(0,0,0,0.95), 0 0 32px rgba(229,176,92,0.9)'
+              fontSize: 'clamp(1.85rem, 5.2vw, 3.6rem)',
+              color: '#ffe3a8',
+              margin: '0 0 10px 0',
+              lineHeight: 1.15,
+              maxWidth: '620px',
+              textShadow: '0 4px 18px rgba(18, 8, 38, 0.98), 0 0 30px rgba(229, 176, 92, 0.9)'
             }}
           >
             Магическое пространство ответов
@@ -1884,13 +1716,11 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
           <p
             className="text-font"
             style={{
-              position: 'relative',
-              zIndex: 1,
-              fontSize: 'clamp(1.3rem, 3vw, 1.7rem)',
-              color: '#e5d4f7',
-              margin: '0 0 38px 0',
+              fontSize: 'clamp(1.15rem, 2.8vw, 1.6rem)',
+              color: '#f5ecff',
+              margin: '0 0 26px 0',
               letterSpacing: '2.5px',
-              textShadow: '0 2px 12px rgba(0,0,0,0.95)'
+              textShadow: '0 2px 12px rgba(18, 8, 38, 0.98)'
             }}
           >
             by.Flox
@@ -1899,10 +1729,8 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
             onClick={enterSpace}
             className="text-font btn-magical"
             style={{
-              position: 'relative',
-              zIndex: 1,
-              padding: '20px 54px',
-              fontSize: 'clamp(1.15rem, 3vw, 1.42rem)',
+              padding: '16px 42px',
+              fontSize: 'clamp(1.05rem, 2.8vw, 1.38rem)',
               animation: 'pulse-gold 3.2s infinite'
             }}
           >
@@ -1955,7 +1783,7 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
               }}
             >
               <KeyRound size={17} color="#ffe3a8" />
-              Код синхронизации: <strong>{syncCode}</strong>
+              Код синхронизации: <strong>{syncCode || '...'}</strong>
             </button>
           </div>
 
@@ -2201,6 +2029,11 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
           </div>
 
           <div className="advice-cloud-box text-font">
+            <RealCloudBackdrop
+              tableNoAlpha={tableNoAlpha}
+              cloudWebmUrl={mediaUrls.adviceCloudWebm}
+              cloudWebpUrl={mediaUrls.tableWebp}
+            />
             <div
               className="mystic-font"
               style={{
@@ -2279,3 +2112,223 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
               }}
               title="История раскладов"
             >
+              <BookOpen size={19} />
+              <span style={{ display: window.innerWidth < 520 ? 'none' : 'inline' }}>История</span>
+            </button>
+          </div>
+        </header>
+
+        {errorMsg && (
+          <div
+            style={{
+              background: 'rgba(110, 24, 24, 0.92)',
+              color: '#fff',
+              padding: '15px 20px',
+              borderRadius: '14px',
+              marginBottom: '20px',
+              border: '1px solid #ff6b6b',
+              textAlign: 'center'
+            }}
+          >
+            {errorMsg}
+          </div>
+        )}
+
+        <div className="glass-panel" style={{ maxWidth: '880px', margin: '0 auto 1.2rem auto' }}>
+          <input
+            className="text-font"
+            type="text"
+            placeholder="Задай сокровенный вопрос"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') performReading(question);
+            }}
+            style={{
+              width: '100%',
+              padding: '18px 20px',
+              marginBottom: '18px',
+              borderRadius: '16px',
+              border: '1px solid rgba(229,176,92,0.75)',
+              background: 'rgba(6, 3, 18, 0.82)',
+              color: '#f8f1e5',
+              fontSize: 'clamp(1.15rem, 2.5vw, 1.35rem)',
+              outline: 'none'
+            }}
+          />
+          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => performReading(question)}
+              disabled={loading}
+              className="mystic-font btn-magical"
+              style={{ flex: 2, padding: '17px', fontSize: 'clamp(1.1rem, 2.5vw, 1.3rem)', minWidth: '210px' }}
+            >
+              {loading ? 'Расшифровываю расклад..' : 'РАСКИНУТЬ КАРТЫ'}
+            </button>
+            <button
+              onClick={() => performReading('Какой совет мне дадут карты на сегодняшний день?')}
+              disabled={loading}
+              className="text-font btn-magical"
+              style={{
+                flex: 1,
+                padding: '17px',
+                fontSize: 'clamp(1.05rem, 2.3vw, 1.2rem)',
+                minWidth: '175px',
+                background: 'rgba(229,176,92,0.22)'
+              }}
+            >
+              Совет на сегодня
+            </button>
+          </div>
+        </div>
+
+        <div
+          className={`tarot-stage ${tableNoAlpha ? 'no-alpha' : ''}`}
+          id="tarotStage"
+        >
+          <video
+            ref={tableVideoRef}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="auto"
+            onError={() => setTableNoAlpha(true)}
+          >
+            <source src={mediaUrls.tableWebm} type='video/webm; codecs="vp9"' />
+          </video>
+
+          <img
+            className="fallback"
+            src={mediaUrls.tableWebp}
+            alt="Стол судьбы"
+          />
+
+          <div className="tarot-spread" id="tarotSpread">
+            {cards.map((card, index) => (
+              <div key={index} className="spread-card-slot">
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    position: 'relative',
+                    transition: 'transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                    transformStyle: 'preserve-3d',
+                    transform: revealed[index] ? 'rotateY(180deg)' : 'rotateY(0deg)'
+                  }}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      backfaceVisibility: 'hidden',
+                      background: 'radial-gradient(circle at 50% 50%, #2c1d52, #120929)',
+                      border: '2px solid #e5b05c',
+                      borderRadius: '8px',
+                      boxShadow: '0 8px 20px rgba(0,0,0,0.85)'
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      backfaceVisibility: 'hidden',
+                      transform: 'rotateY(180deg)',
+                      background: '#0a0515',
+                      border: '2px solid #e5b05c',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      boxShadow: '0 10px 25px rgba(0,0,0,0.92)'
+                    }}
+                  >
+                    <TarotCardImage
+                      card={card}
+                      style={{ width: '100%', height: '78%', objectFit: 'cover', display: 'block' }}
+                    />
+                    <div
+                      className="text-font"
+                      style={{
+                        height: '22%',
+                        background: 'rgba(10, 5, 21, 0.96)',
+                        color: '#ffe3a8',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 'clamp(0.5rem, 1.15vw, 0.82rem)',
+                        textAlign: 'center',
+                        fontWeight: 'bold',
+                        padding: '1px 3px',
+                        lineHeight: 1.05
+                      }}
+                    >
+                      {card.name}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div ref={analysisSectionRef} style={{ maxWidth: '880px', margin: '0.5rem auto 0 auto', scrollMarginTop: '24px' }}>
+          {analysis && (
+            <div>
+              <div className="glass-panel text-font">
+                <h3
+                  className="mystic-font"
+                  style={{
+                    color: '#ffe3a8',
+                    margin: '0 0 18px 0',
+                    fontSize: 'clamp(1.65rem, 3.8vw, 2.2rem)',
+                    borderBottom: '1px solid rgba(229,176,92,0.45)',
+                    paddingBottom: '12px',
+                    textAlign: 'center'
+                  }}
+                >
+                  Анализ расклада
+                </h3>
+                <div
+                  className="readable-analysis-text"
+                  dangerouslySetInnerHTML={{ __html: formatReadableText(analysis) }}
+                />
+              </div>
+
+              {mainAdvice && (
+                <div className="advice-cloud-box text-font">
+                  <RealCloudBackdrop
+                    tableNoAlpha={tableNoAlpha}
+                    cloudWebmUrl={mediaUrls.adviceCloudWebm}
+                    cloudWebpUrl={mediaUrls.tableWebp}
+                  />
+                  <div
+                    className="mystic-font"
+                    style={{
+                      fontSize: 'clamp(1.45rem, 3.2vw, 1.85rem)',
+                      color: '#ffe3a8',
+                      marginBottom: '14px',
+                      textAlign: 'center',
+                      textTransform: 'uppercase',
+                      letterSpacing: '2px'
+                    }}
+                  >
+                    Главный совет
+                  </div>
+                  <div
+                    className="readable-analysis-text"
+                    style={{ textAlign: 'center' }}
+                    dangerouslySetInnerHTML={{ __html: formatReadableText(mainAdvice) }}
+                  />
+                </div>
+              )}
+
+              {renderFollowUpSection(followUps, false)}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
