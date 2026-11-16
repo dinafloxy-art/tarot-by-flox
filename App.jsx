@@ -49,7 +49,7 @@ try {
   }
 } catch (e) {
   console.warn('Firebase init fallback:', e);
-}
+const FAL_KEY = 'fal_sk_93501a40318d4047a6d3c501918eaae0:bfe0578b8aaf2c3b74dda9f90728e7d9';
 
 const IS_SANDBOX_PREVIEW =
   typeof window !== 'undefined' &&
@@ -97,50 +97,35 @@ const generateSyncCode = () => {
 };
 
 const requestDeepTarotLLM = async ({ systemPrompt, prompt }) => {
-  const apiKey = typeof window !== 'undefined' && window.GEMINI_API_KEY ? window.GEMINI_API_KEY : '';
-  
-  const modelsToTry = [
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
-    'gemini-1.5-pro'
-  ];
-
-  let lastError = null;
-
-  for (const model of modelsToTry) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: `${systemPrompt}\n\n${prompt}` }]
-            }
-          ]
-        })
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error?.message || `Ошибка API (${response.status})`);
-      }
-
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text && text.trim().length > 0) {
-        return text.trim();
-      }
-    } catch (err) {
-      lastError = err;
-    }
+  const cleanKey = FAL_KEY.trim();
+  if (!cleanKey || cleanKey.includes('ваш_настоящий_ключ')) {
+    throw new Error('Укажите корректный FAL_KEY');
   }
 
-  throw lastError || new Error('Не удалось получить ответ от Google Gemini API');
+  const response = await fetch('https://fal.run/fal-ai/any-llm', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Key ${cleanKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'anthropic/claude-3.5-sonnet',
+      system_prompt: systemPrompt,
+      prompt: prompt
+    })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.detail ? JSON.stringify(data.detail) : `Ошибка API (${response.status})`);
+  }
+
+  const text = data.output || data.text || data.response || data.choices?.[0]?.message?.content;
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    throw new Error('Пустой ответ от модели');
+  }
+
+  return text.trim();
 };
 
 const SUITS = [
