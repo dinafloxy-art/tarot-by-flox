@@ -100,58 +100,47 @@ const generateSyncCode = () => {
   return result;
 };
 
+const requestDeepTarotLLM = async ({ systemPrompt, prompt }) => {
+  // Используем прямой официальный нативный эндпоинт Google Gemini API
+  const apiKey = typeof window !== 'undefined' && window.GEMINI_API_KEY ? window.GEMINI_API_KEY : 'AIzaSyD...'; // Или вставь свой ключ Google AI Studio при необходимости
 const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
-  const preferredModels = [
-    'google/gemini-2.5-pro',
-    'google/gemini-2.5-flash',
-    'anthropic/claude-3.5-sonnet'
-  ];
+  const modelName = 'anthropic/claude-3.5-sonnet';
 
-  let lastError = null;
-
-  for (const modelName of preferredModels) {
-    try {
-      const requestBody = {
+  try {
+    const response = await fetch('https://fal.run/fal-ai/any-llm', {
+      method: 'POST',
+      headers: {
+        Authorization: `Key ${cleanKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
         model: modelName,
         system_prompt: systemPrompt,
         prompt
-      };
-      if (modelName.includes('gemini')) {
-        requestBody.reasoning = true;
-      }
+      })
+    });
 
-      const response = await fetch('https://fal.run/fal-ai/any-llm', {
-        method: 'POST',
-        headers: {
-          Authorization: `Key ${cleanKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      const responseText = await response.text();
-      let data = {};
-      try {
-        data = JSON.parse(responseText);
-      } catch (parseErr) {
-        throw new Error('Некорректный ответ сервера');
-      }
-
-      if (!response.ok) {
-        throw new Error(data?.detail ? JSON.stringify(data.detail) : `Ошибка (${response.status})`);
-      }
-
-      const rawText =
-        data.output || data.text || data.response || data.choices?.[0]?.message?.content;
-      if (rawText && String(rawText).trim().length > 0) {
-        return String(rawText).trim();
-      }
-    } catch (err) {
-      lastError = err;
+    const responseText = await response.text();
+    let data = {};
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseErr) {
+      throw new Error('Некорректный ответ сервера');
     }
-  }
 
-  throw lastError || new Error('Не удалось получить ответ от модели');
+    if (!response.ok) {
+      throw new Error(data?.detail ? JSON.stringify(data.detail) : `Ошибка (${response.status})`);
+    }
+
+    const rawText =
+      data.output || data.text || data.response || data.choices?.[0]?.message?.content;
+    if (rawText && String(rawText).trim().length > 0) {
+      return String(rawText).trim();
+    }
+    throw new Error('Пустой ответ от модели');
+  } catch (err) {
+    throw err;
+  }
 };
 
 const SUITS = [
