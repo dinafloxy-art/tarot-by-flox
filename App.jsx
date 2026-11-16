@@ -29,7 +29,6 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 
-// --- ИНИЦИАЛИЗАЦИЯ FIREBASE ---
 let app = null;
 let auth = null;
 let db = null;
@@ -62,7 +61,6 @@ const IS_SANDBOX_PREVIEW =
     window.location.hostname.includes('scf.usercontent') ||
     window.location.protocol === 'blob:');
 
-// --- ОБЛАЧНОЕ ХРАНИЛИЩЕ ПО КОДУ СИНХРОНИЗАЦИИ ---
 const CLOUD_KV_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
 const CLOUD_APP_KEY = 'tarotfloxsync8921';
 
@@ -102,7 +100,6 @@ const generateSyncCode = () => {
   return result;
 };
 
-// Вызов флагманской модели Google Gemini 2.5 Pro (с автоматическим резервом на Gemini 2.5 Flash и Claude 3.5 Sonnet)
 const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
   const preferredModels = [
     'google/gemini-2.5-pro',
@@ -152,7 +149,6 @@ const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
   throw lastError || new Error('Не удалось получить ответ от модели');
 };
 
-// --- КОЛОДА ИЗ 78 КАРТ РАЙДЕРА-УЭЙТА ---
 const SUITS = [
   { id: 'wa', altId: 'wa', name: 'Жезлов', symbol: '🪄', color: '#e89b46' },
   { id: 'cu', altId: 'cu', name: 'Кубков', symbol: '🏆', color: '#63b3ed' },
@@ -412,7 +408,6 @@ export default function App() {
     musicPlayingRef.current = musicPlaying;
   }, [musicPlaying]);
 
-  // --- ПРИНУДИТЕЛЬНЫЙ ЗАПУСК ВСЕХ ФОНОВЫХ ВИДЕО ---
   const startAllBackgroundVideos = () => {
     const bgEl = document.getElementById('bgVideoEl');
     if (bgEl) {
@@ -444,7 +439,6 @@ export default function App() {
     };
   }, [view, mediaUrls]);
 
-  // --- АВТОМАТИЧЕСКАЯ ПАУЗА МУЗЫКИ ПРИ СВОРАЧИВАНИИ ИЛИ ВЫКЛЮЧЕНИИ ЭКРАНА ТЕЛЕФОНА ---
   useEffect(() => {
     const wasPlayingBeforeHideRef = { current: false };
 
@@ -486,7 +480,6 @@ export default function App() {
     };
   }, []);
 
-  // --- ПРЕДЗАГРУЗКА ВСЕХ 78 КАРТ ---
   useEffect(() => {
     let cancelled = false;
     const preloadAllCards = async () => {
@@ -503,7 +496,6 @@ export default function App() {
     };
   }, []);
 
-  // --- АВТОРИЗАЦИЯ FIREBASE ---
   useEffect(() => {
     if (!auth) return;
     const initAuth = async () => {
@@ -522,7 +514,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // --- СИНХРОНИЗАЦИЯ ИСТОРИИ МЕЖДУ ПК И ТЕЛЕФОНОМ ---
   useEffect(() => {
     let localItems = [];
     try {
@@ -632,7 +623,6 @@ export default function App() {
     }
   };
 
-  // --- ПРОВЕРКА SAFARI / iOS ДЛЯ ПРОЗРАЧНОСТИ WEBM ---
   useEffect(() => {
     const ua = navigator.userAgent || '';
     const webkitOnly =
@@ -887,7 +877,6 @@ export default function App() {
     }, 1100);
   };
 
-  // --- РАСКЛАД 5 КАРТ ---
   const performReading = async (currentQuestion) => {
     setErrorMsg('');
     const actualQuestion = currentQuestion.trim() || 'Сделай общий анализ моей ситуации на сегодня.';
@@ -1008,7 +997,6 @@ export default function App() {
     setLoading(false);
   };
 
-  // --- УТОЧНЯЮЩИЕ ВОПРОСЫ (НОВЫЙ РАСКЛАД ИЗ 5 СВЕЖИХ КАРТ С УЧЕТОМ КОНТЕКСТА ВЕТКИ) ---
   const askFollowUpQuestion = async (isHistoryView = false) => {
     const activeQuestionText = followUpInput.trim();
     if (!activeQuestionText || followUpLoading) return;
@@ -1032,7 +1020,6 @@ export default function App() {
     try {
       const cleanKey = FAL_KEY.trim();
 
-      // Собираем коды карт, которые уже выпадали в этом раскладе и предыдущих уточнениях, чтобы колода тянула свежие арканы
       const usedCodes = new Set((targetReading.cards || []).map((c) => c.code));
       (targetReading.followUps || []).forEach((fu) => {
         (fu.cards || []).forEach((c) => usedCodes.add(c.code));
@@ -1083,7 +1070,6 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
       const answerText = cleanAnalysisText(rawAnswer);
       if (!answerText) throw new Error('Пустой ответ');
 
-      // Озвучиваем открытие новых уточняющих карт
       for (let i = 0; i < 5; i++) {
         setTimeout(() => playCardFlipSound(i), i * 110);
       }
@@ -1850,7 +1836,6 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
     </div>
   );
 
-  // --- 1. ГЛАВНЫЙ ЭКРАН ---
   if (view === 'landing' || view === 'transition') {
     return (
       <div
@@ -1945,7 +1930,6 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
     );
   }
 
-  // --- 2. ЭКРАН ИСТОРИИ ---
   if (view === 'history') {
     return (
       <div style={{ minHeight: '100vh', padding: '65px 16px 50px', position: 'relative' }}>
@@ -2121,7 +2105,6 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
     );
   }
 
-  // --- 3. ДЕТАЛЬНЫЙ ПРОСМОТР РАСКЛАДА ИЗ ИСТОРИИ ---
   if (view === 'historyDetail' && selectedHistoryItem) {
     return (
       <div style={{ minHeight: '100vh', padding: '65px 16px 65px', position: 'relative' }}>
@@ -2261,7 +2244,6 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
     );
   }
 
-  // --- 4. СТОЛ СУДЬБЫ ---
   return (
     <div style={{ minHeight: '100vh', position: 'relative', padding: '58px 14px 85px' }}>
       {renderBackgroundLayer()}
@@ -2314,10 +2296,7 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
               }}
               title="История раскладов"
             >
-              <BookOpen size={19} />
-              <span style={{ display: typeof window !== 'undefined' && window.innerWidth < 520 ? 'none' : 'inline' }}>
-                История
-              </span>
+              <BookOpen size={18} /> История
             </button>
           </div>
         </header>
@@ -2325,20 +2304,21 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
         {errorMsg && (
           <div
             style={{
-              background: 'rgba(110, 24, 24, 0.92)',
+              background: 'rgba(120, 25, 35, 0.92)',
               color: '#fff',
               padding: '15px 20px',
-              borderRadius: '14px',
+              borderRadius: '16px',
               marginBottom: '20px',
               border: '1px solid #ff6b6b',
-              textAlign: 'center'
+              textAlign: 'center',
+              fontSize: '1.1rem'
             }}
           >
             {errorMsg}
           </div>
         )}
 
-        <div className="glass-panel" style={{ maxWidth: '880px', margin: '0 auto 1.2rem auto' }}>
+        <div className="glass-panel" style={{ marginBottom: '2.4rem' }}>
           <input
             className="text-font"
             type="text"
@@ -2350,11 +2330,11 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
             }}
             style={{
               width: '100%',
-              padding: '18px 20px',
-              marginBottom: '18px',
-              borderRadius: '16px',
-              border: '1px solid rgba(229,176,92,0.75)',
-              background: 'rgba(6, 3, 18, 0.82)',
+              padding: '18px 22px',
+              marginBottom: '20px',
+              borderRadius: '18px',
+              border: '1px solid rgba(229, 176, 92, 0.65)',
+              background: 'rgba(6, 3, 18, 0.85)',
               color: '#f8f1e5',
               fontSize: 'clamp(1.15rem, 2.5vw, 1.35rem)',
               outline: 'none'
@@ -2365,20 +2345,20 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
               onClick={() => performReading(question)}
               disabled={loading}
               className="mystic-font btn-magical"
-              style={{ flex: 2, padding: '17px', fontSize: 'clamp(1.1rem, 2.5vw, 1.3rem)', minWidth: '210px' }}
+              style={{ flex: 2, minWidth: '220px', padding: '18px', fontSize: '1.2rem' }}
             >
-              {loading ? 'Расшифровываю расклад..' : 'РАСКИНУТЬ КАРТЫ'}
+              {loading ? 'Расшифровываю расклад..' : 'Раскинуть карты'}
             </button>
             <button
-              onClick={() => performReading('Какой совет мне дадут карты на сегодняшний день?')}
+              onClick={() => performReading('Какой практичный совет мне дадут карты на сегодняшний день?')}
               disabled={loading}
               className="text-font btn-magical"
               style={{
                 flex: 1,
-                padding: '17px',
-                fontSize: 'clamp(1.05rem, 2.3vw, 1.2rem)',
-                minWidth: '175px',
-                background: 'rgba(229,176,92,0.22)'
+                minWidth: '170px',
+                padding: '18px',
+                fontSize: '1.15rem',
+                background: 'rgba(229,176,92,0.16)'
               }}
             >
               Совет на сегодня
@@ -2386,175 +2366,148 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
           </div>
         </div>
 
-        <div
-          className={`tarot-stage ${tableNoAlpha ? 'no-alpha' : ''}`}
-          id="tarotStage"
-        >
-          <video
-            ref={tableVideoRef}
-            autoPlay
-            muted
-            loop
-            playsInline
-            webkit-playsinline="true"
-            preload="auto"
-            onError={() => setTableNoAlpha(true)}
-          >
-            <source src={mediaUrls.tableWebm} type='video/webm; codecs="vp9"' />
-          </video>
+        <div className={`tarot-stage ${tableNoAlpha ? 'no-alpha' : ''}`}>
+          {!tableNoAlpha ? (
+            <video
+              ref={tableVideoRef}
+              autoPlay
+              muted
+              loop
+              playsInline
+              webkit-playsinline="true"
+              className="sway-anim"
+              src={mediaUrls.tableWebm}
+              onError={() => setTableNoAlpha(true)}
+            />
+          ) : (
+            <img
+              src={mediaUrls.tableWebp}
+              alt="Стол на облаке"
+              className="fallback sway-anim"
+            />
+          )}
 
-          <img
-            className="fallback sway-anim"
-            src={mediaUrls.tableWebp}
-            alt="Магический стол на облаке"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
-          />
-
-          <div className="tarot-spread" id="tarotSpread">
-            {cards.map((card, index) => (
-              <div key={index} className="spread-card-slot">
-                <div
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    position: 'relative',
-                    transition: 'transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                    transformStyle: 'preserve-3d',
-                    transform: revealed[index] ? 'rotateY(180deg)' : 'rotateY(0deg)'
-                  }}
-                >
+          {cards.length > 0 && (
+            <div className="tarot-spread">
+              {cards.map((card, index) => (
+                <div key={index} className="spread-card-slot">
                   <div
                     style={{
-                      position: 'absolute',
-                      inset: 0,
-                      backfaceVisibility: 'hidden',
-                      background: 'radial-gradient(circle at 50% 50%, #2c1d52, #120929)',
-                      border: '2px solid #e5b05c',
-                      borderRadius: '8px',
-                      boxShadow: '0 8px 20px rgba(0,0,0,0.85)'
-                    }}
-                  />
-
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      backfaceVisibility: 'hidden',
-                      transform: 'rotateY(180deg)',
-                      background: '#0a0515',
-                      border: '2px solid #e5b05c',
-                      borderRadius: '8px',
-                      overflow: 'hidden',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      boxShadow: '0 10px 25px rgba(0,0,0,0.92)'
+                      width: '100%',
+                      height: '100%',
+                      position: 'relative',
+                      transition: 'transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
+                      transformStyle: 'preserve-3d',
+                      transform: revealed[index] ? 'rotateY(180deg)' : 'rotateY(0deg)'
                     }}
                   >
-                    <TarotCardImage
-                      card={card}
-                      style={{ width: '100%', height: '78%', objectFit: 'cover', display: 'block' }}
-                    />
                     <div
-                      className="text-font"
                       style={{
-                        height: '22%',
-                        background: 'rgba(10, 5, 21, 0.96)',
-                        color: '#ffe3a8',
+                        position: 'absolute',
+                        inset: 0,
+                        backfaceVisibility: 'hidden',
+                        background: 'linear-gradient(135deg, #1a0b2e, #311854)',
+                        border: '2px solid rgba(229,176,92,0.9)',
+                        borderRadius: '12px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: 'clamp(0.5rem, 1.15vw, 0.82rem)',
-                        textAlign: 'center',
-                        fontWeight: 'bold',
-                        padding: '1px 3px',
-                        lineHeight: 1.05
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.8)'
+                      }}
+                    />
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        backfaceVisibility: 'hidden',
+                        transform: 'rotateY(180deg)',
+                        background: '#0a0515',
+                        border: '2px solid #e5b05c',
+                        borderRadius: '12px',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        boxShadow: '0 15px 35px rgba(0,0,0,0.85)'
                       }}
                     >
-                      {card.name}
+                      <TarotCardImage
+                        card={card}
+                        style={{ width: '100%', height: '78%', objectFit: 'cover', display: 'block' }}
+                      />
+                      <div
+                        className="text-font"
+                        style={{
+                          height: '22%',
+                          background: '#0a0515',
+                          color: '#ffe3a8',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 'clamp(0.5rem, 1.4vw, 0.85rem)',
+                          textAlign: 'center',
+                          fontWeight: 'bold',
+                          padding: '1px 3px',
+                          lineHeight: 1.05
+                        }}
+                      >
+                        {card.name}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div ref={analysisSectionRef} style={{ maxWidth: '880px', margin: '0.5rem auto 0 auto', scrollMarginTop: '24px' }}>
-          {analysis && (
-            <div>
-              <div className="glass-panel text-font">
-                <h3
-                  className="mystic-font"
-                  style={{
-                    color: '#ffe3a8',
-                    margin: '0 0 18px 0',
-                    fontSize: 'clamp(1.65rem, 3.8vw, 2.2rem)',
-                    borderBottom: '1px solid rgba(229,176,92,0.45)',
-                    paddingBottom: '12px',
-                    textAlign: 'center'
-                  }}
-                >
-                  Анализ расклада
-                </h3>
-                <div
-                  className="readable-analysis-text"
-                  dangerouslySetInnerHTML={{ __html: formatReadableText(analysis) }}
-                />
-              </div>
-
-              {mainAdvice && (
-                <div className="advice-cloud-box text-font">
-                  {!tableNoAlpha && (
-                    <video
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                      webkit-playsinline="true"
-                      src={mediaUrls.adviceCloudWebm}
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
-                      style={{
-                        position: 'absolute',
-                        inset: '-15% -10%',
-                        width: '120%',
-                        height: '130%',
-                        objectFit: 'cover',
-                        zIndex: -1,
-                        pointerEvents: 'none',
-                        opacity: 0.45,
-                        borderRadius: '36px'
-                      }}
-                    />
-                  )}
-                  <div
-                    className="mystic-font"
-                    style={{
-                      fontSize: 'clamp(1.45rem, 3.2vw, 1.85rem)',
-                      color: '#ffe3a8',
-                      marginBottom: '14px',
-                      textAlign: 'center',
-                      textTransform: 'uppercase',
-                      letterSpacing: '2px'
-                    }}
-                  >
-                    Главный совет
-                  </div>
-                  <div
-                    className="readable-analysis-text"
-                    style={{ textAlign: 'center' }}
-                    dangerouslySetInnerHTML={{ __html: formatReadableText(mainAdvice) }}
-                  />
-                </div>
-              )}
-
-              {renderFollowUpSection(followUps, false)}
+              ))}
             </div>
           )}
         </div>
+
+        {analysis && revealed.every(Boolean) && (
+          <div ref={analysisSectionRef} style={{ marginTop: '2.5rem' }}>
+            <div className="glass-panel" style={{ marginBottom: '2.5rem' }}>
+              <h3
+                className="mystic-font"
+                style={{
+                  color: '#ffe3a8',
+                  margin: '0 0 20px 0',
+                  fontSize: 'clamp(1.7rem, 4vw, 2.2rem)',
+                  borderBottom: '1px solid rgba(229,176,92,0.45)',
+                  paddingBottom: '14px',
+                  textAlign: 'center'
+                }}
+              >
+                Анализ расклада
+              </h3>
+              <div
+                className="readable-analysis-text"
+                dangerouslySetInnerHTML={{ __html: formatReadableText(analysis) }}
+              />
+            </div>
+
+            {mainAdvice && (
+              <div className="advice-cloud-box text-font">
+                <div
+                  className="mystic-font"
+                  style={{
+                    fontSize: 'clamp(1.4rem, 3vw, 1.8rem)',
+                    color: '#ffe3a8',
+                    marginBottom: '14px',
+                    textAlign: 'center',
+                    textTransform: 'uppercase',
+                    letterSpacing: '2px'
+                  }}
+                >
+                  Главный совет
+                </div>
+                <div
+                  className="readable-analysis-text"
+                  style={{ textAlign: 'center' }}
+                  dangerouslySetInnerHTML={{ __html: formatReadableText(mainAdvice) }}
+                />
+              </div>
+            )}
+
+            {renderFollowUpSection(followUps, false)}
+          </div>
+        )}
       </div>
     </div>
   );
