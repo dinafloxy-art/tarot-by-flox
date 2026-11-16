@@ -51,10 +51,6 @@ try {
   console.warn('Firebase init fallback:', e);
 }
 
-const FAL_KEY =
-  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FAL_KEY) ||
-  'fal_sk_93501a40318d4047a6d3c501918eaae0:bfe0578b8aaf2c3b74dda9f90728e7d9';
-
 const IS_SANDBOX_PREVIEW =
   typeof window !== 'undefined' &&
   (window.location.hostname.includes('googleusercontent') ||
@@ -101,46 +97,50 @@ const generateSyncCode = () => {
 };
 
 const requestDeepTarotLLM = async ({ systemPrompt, prompt }) => {
-  // Используем прямой официальный нативный эндпоинт Google Gemini API
-  const apiKey = typeof window !== 'undefined' && window.GEMINI_API_KEY ? window.GEMINI_API_KEY : 'AIzaSyD...'; // Или вставь свой ключ Google AI Studio при необходимости
-const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
-  const modelName = 'anthropic/claude-3.5-sonnet';
+  const apiKey = typeof window !== 'undefined' && window.GEMINI_API_KEY ? window.GEMINI_API_KEY : '';
+  
+  const modelsToTry = [
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-1.5-pro'
+  ];
 
-  try {
-    const response = await fetch('https://fal.run/fal-ai/any-llm', {
-      method: 'POST',
-      headers: {
-        Authorization: `Key ${cleanKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: modelName,
-        system_prompt: systemPrompt,
-        prompt
-      })
-    });
+  let lastError = null;
 
-    const responseText = await response.text();
-    let data = {};
+  for (const model of modelsToTry) {
     try {
-      data = JSON.parse(responseText);
-    } catch (parseErr) {
-      throw new Error('Некорректный ответ сервера');
-    }
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `${systemPrompt}\n\n${prompt}` }]
+            }
+          ]
+        })
+      });
 
-    if (!response.ok) {
-      throw new Error(data?.detail ? JSON.stringify(data.detail) : `Ошибка (${response.status})`);
-    }
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error?.message || `Ошибка API (${response.status})`);
+      }
 
-    const rawText =
-      data.output || data.text || data.response || data.choices?.[0]?.message?.content;
-    if (rawText && String(rawText).trim().length > 0) {
-      return String(rawText).trim();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text && text.trim().length > 0) {
+        return text.trim();
+      }
+    } catch (err) {
+      lastError = err;
     }
-    throw new Error('Пустой ответ от модели');
-  } catch (err) {
-    throw err;
   }
+
+  throw lastError || new Error('Не удалось получить ответ от Google Gemini API');
 };
 
 const SUITS = [
@@ -875,11 +875,6 @@ export default function App() {
     setErrorMsg('');
     const actualQuestion = currentQuestion.trim() || 'Сделай общий анализ моей ситуации на сегодня.';
 
-    const cleanKey = FAL_KEY.trim();
-    if (!cleanKey || cleanKey.includes('ваш_настоящий_ключ')) {
-      return setErrorMsg('Введите ваш FAL_KEY в коде приложения!');
-    }
-
     const shuffled = [...DECK].sort(() => 0.5 - Math.random());
     const selected = shuffled.slice(0, 5);
     const newReadingId = Date.now();
@@ -948,7 +943,6 @@ export default function App() {
 Сделай глубокий, проницательный профессиональный синтез этих 5 карт СТРОГО в контексте вопроса "${actualQuestion}". Переведи символику каждой карты и их связок непосредственно на предмет вопроса (без книжных шаблонов, без решеток ### и без любых предупреждений). В конце выдели блок "ГЛАВНЫЙ СОВЕТ:".`;
 
       const rawText = await requestDeepTarotLLM({
-        cleanKey,
         systemPrompt,
         prompt: fullPrompt
       });
@@ -1012,8 +1006,6 @@ export default function App() {
     setErrorMsg('');
 
     try {
-      const cleanKey = FAL_KEY.trim();
-
       const usedCodes = new Set((targetReading.cards || []).map((c) => c.code));
       (targetReading.followUps || []).forEach((fu) => {
         (fu.cards || []).forEach((c) => usedCodes.add(c.code));
@@ -1057,7 +1049,6 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
 Сделай глубокий, прямой и содержательный разбор этих НОВЫХ 5 карт с учетом контекста всей ветки расклада, без воды, без предупреждений и без лишних заголовков:`;
 
       const rawAnswer = await requestDeepTarotLLM({
-        cleanKey,
         systemPrompt,
         prompt: contextPrompt
       });
