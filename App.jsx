@@ -49,6 +49,10 @@ try {
   }
 } catch (e) {
   console.warn('Firebase init fallback:', e);
+}
+
+const FAL_KEY =
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FAL_KEY) ||
 const FAL_KEY = 'fal_sk_93501a40318d4047a6d3c501918eaae0:bfe0578b8aaf2c3b74dda9f90728e7d9';
 
 const IS_SANDBOX_PREVIEW =
@@ -860,6 +864,11 @@ export default function App() {
     setErrorMsg('');
     const actualQuestion = currentQuestion.trim() || 'Сделай общий анализ моей ситуации на сегодня.';
 
+    const cleanKey = FAL_KEY.trim();
+    if (!cleanKey || cleanKey.includes('ваш_настоящий_ключ')) {
+      return setErrorMsg('Введите ваш FAL_KEY в коде приложения!');
+    }
+
     const shuffled = [...DECK].sort(() => 0.5 - Math.random());
     const selected = shuffled.slice(0, 5);
     const newReadingId = Date.now();
@@ -928,6 +937,7 @@ export default function App() {
 Сделай глубокий, проницательный профессиональный синтез этих 5 карт СТРОГО в контексте вопроса "${actualQuestion}". Переведи символику каждой карты и их связок непосредственно на предмет вопроса (без книжных шаблонов, без решеток ### и без любых предупреждений). В конце выдели блок "ГЛАВНЫЙ СОВЕТ:".`;
 
       const rawText = await requestDeepTarotLLM({
+        cleanKey,
         systemPrompt,
         prompt: fullPrompt
       });
@@ -991,6 +1001,8 @@ export default function App() {
     setErrorMsg('');
 
     try {
+      const cleanKey = FAL_KEY.trim();
+
       const usedCodes = new Set((targetReading.cards || []).map((c) => c.code));
       (targetReading.followUps || []).forEach((fu) => {
         (fu.cards || []).forEach((c) => usedCodes.add(c.code));
@@ -1034,6 +1046,7 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
 Сделай глубокий, прямой и содержательный разбор этих НОВЫХ 5 карт с учетом контекста всей ветки расклада, без воды, без предупреждений и без лишних заголовков:`;
 
       const rawAnswer = await requestDeepTarotLLM({
+        cleanKey,
         systemPrompt,
         prompt: contextPrompt
       });
@@ -2266,219 +2279,3 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
               }}
               title="История раскладов"
             >
-              <BookOpen size={18} /> История
-            </button>
-          </div>
-        </header>
-
-        {errorMsg && (
-          <div
-            style={{
-              background: 'rgba(120, 25, 35, 0.92)',
-              color: '#fff',
-              padding: '15px 20px',
-              borderRadius: '16px',
-              marginBottom: '20px',
-              border: '1px solid #ff6b6b',
-              textAlign: 'center',
-              fontSize: '1.1rem'
-            }}
-          >
-            {errorMsg}
-          </div>
-        )}
-
-        <div className="glass-panel" style={{ marginBottom: '2.4rem' }}>
-          <input
-            className="text-font"
-            type="text"
-            placeholder="Задай сокровенный вопрос"
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') performReading(question);
-            }}
-            style={{
-              width: '100%',
-              padding: '18px 22px',
-              marginBottom: '20px',
-              borderRadius: '18px',
-              border: '1px solid rgba(229, 176, 92, 0.65)',
-              background: 'rgba(6, 3, 18, 0.85)',
-              color: '#f8f1e5',
-              fontSize: 'clamp(1.15rem, 2.5vw, 1.35rem)',
-              outline: 'none'
-            }}
-          />
-          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => performReading(question)}
-              disabled={loading}
-              className="mystic-font btn-magical"
-              style={{ flex: 2, minWidth: '220px', padding: '18px', fontSize: '1.2rem' }}
-            >
-              {loading ? 'Расшифровываю расклад..' : 'Раскинуть карты'}
-            </button>
-            <button
-              onClick={() => performReading('Какой практичный совет мне дадут карты на сегодняшний день?')}
-              disabled={loading}
-              className="text-font btn-magical"
-              style={{
-                flex: 1,
-                minWidth: '170px',
-                padding: '18px',
-                fontSize: '1.15rem',
-                background: 'rgba(229,176,92,0.16)'
-              }}
-            >
-              Совет на сегодня
-            </button>
-          </div>
-        </div>
-
-        <div className={`tarot-stage ${tableNoAlpha ? 'no-alpha' : ''}`}>
-          {!tableNoAlpha ? (
-            <video
-              ref={tableVideoRef}
-              autoPlay
-              muted
-              loop
-              playsInline
-              webkit-playsinline="true"
-              className="sway-anim"
-              src={mediaUrls.tableWebm}
-              onError={() => setTableNoAlpha(true)}
-            />
-          ) : (
-            <img
-              src={mediaUrls.tableWebp}
-              alt="Стол на облаке"
-              className="fallback sway-anim"
-            />
-          )}
-
-          {cards.length > 0 && (
-            <div className="tarot-spread">
-              {cards.map((card, index) => (
-                <div key={index} className="spread-card-slot">
-                  <div
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      position: 'relative',
-                      transition: 'transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
-                      transformStyle: 'preserve-3d',
-                      transform: revealed[index] ? 'rotateY(180deg)' : 'rotateY(0deg)'
-                    }}
-                  >
-                    <div
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        backfaceVisibility: 'hidden',
-                        background: 'linear-gradient(135deg, #1a0b2e, #311854)',
-                        border: '2px solid rgba(229,176,92,0.9)',
-                        borderRadius: '12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 10px 30px rgba(0,0,0,0.8)'
-                      }}
-                    />
-                    <div
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        backfaceVisibility: 'hidden',
-                        transform: 'rotateY(180deg)',
-                        background: '#0a0515',
-                        border: '2px solid #e5b05c',
-                        borderRadius: '12px',
-                        overflow: 'hidden',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        boxShadow: '0 15px 35px rgba(0,0,0,0.85)'
-                      }}
-                    >
-                      <TarotCardImage
-                        card={card}
-                        style={{ width: '100%', height: '78%', objectFit: 'cover', display: 'block' }}
-                      />
-                      <div
-                        className="text-font"
-                        style={{
-                          height: '22%',
-                          background: '#0a0515',
-                          color: '#ffe3a8',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 'clamp(0.5rem, 1.4vw, 0.85rem)',
-                          textAlign: 'center',
-                          fontWeight: 'bold',
-                          padding: '1px 3px',
-                          lineHeight: 1.05
-                        }}
-                      >
-                        {card.name}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {analysis && revealed.every(Boolean) && (
-          <div ref={analysisSectionRef} style={{ marginTop: '2.5rem' }}>
-            <div className="glass-panel" style={{ marginBottom: '2.5rem' }}>
-              <h3
-                className="mystic-font"
-                style={{
-                  color: '#ffe3a8',
-                  margin: '0 0 20px 0',
-                  fontSize: 'clamp(1.7rem, 4vw, 2.2rem)',
-                  borderBottom: '1px solid rgba(229,176,92,0.45)',
-                  paddingBottom: '14px',
-                  textAlign: 'center'
-                }}
-              >
-                Анализ расклада
-              </h3>
-              <div
-                className="readable-analysis-text"
-                dangerouslySetInnerHTML={{ __html: formatReadableText(analysis) }}
-              />
-            </div>
-
-            {mainAdvice && (
-              <div className="advice-cloud-box text-font">
-                <div
-                  className="mystic-font"
-                  style={{
-                    fontSize: 'clamp(1.4rem, 3vw, 1.8rem)',
-                    color: '#ffe3a8',
-                    marginBottom: '14px',
-                    textAlign: 'center',
-                    textTransform: 'uppercase',
-                    letterSpacing: '2px'
-                  }}
-                >
-                  Главный совет
-                </div>
-                <div
-                  className="readable-analysis-text"
-                  style={{ textAlign: 'center' }}
-                  dangerouslySetInnerHTML={{ __html: formatReadableText(mainAdvice) }}
-                />
-              </div>
-            )}
-
-            {renderFollowUpSection(followUps, false)}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
