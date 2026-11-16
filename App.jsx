@@ -111,17 +111,22 @@ const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
 
   for (const modelName of preferredModels) {
     try {
+      const requestBody = {
+        model: modelName,
+        system_prompt: systemPrompt,
+        prompt
+      };
+      if (modelName.includes('gemini')) {
+        requestBody.reasoning = true;
+      }
+
       const response = await fetch('https://fal.run/fal-ai/any-llm', {
         method: 'POST',
         headers: {
           Authorization: `Key ${cleanKey}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          model: modelName,
-          system_prompt: systemPrompt,
-          prompt
-        })
+        body: JSON.stringify(requestBody)
       });
 
       const responseText = await response.text();
