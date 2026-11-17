@@ -63,7 +63,7 @@ try {
   console.warn('Firebase init fallback:', e);
 }
 
-const FAL_KEY = 'fal_sk_93501a40318d4047a6d3c501918eaae0:bfe0578b8aaf2c3b74dda9f90728e7d9';
+const FAL_KEY ='server';
 
 const getOrCreateSyncCode = () => {
   try {
@@ -152,7 +152,7 @@ const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt, fastMode = 
 
   for (const modelName of preferredModels) {
     try {
-      const response = await fetch('https://fal.run/fal-ai/any-llm', {
+      const response = await fetch('/api/llm', {
         method: 'POST',
         headers: {
           Authorization: `Key ${cleanKey}`,
