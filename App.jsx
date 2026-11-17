@@ -856,7 +856,22 @@ const RealCloudBackdrop = ({ tableNoAlpha, cloudWebmUrl, cloudWebpUrl }) => (
     )}
   </div>
 );
+const cleanAnalysisText = (text) =>
+  String(text || '')
+    .replace(/#{1,6}\s*/g, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 
+const escapeHtml = (s) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const formatReadableText = (text) =>
+  escapeHtml(String(text || ''))
+    .split(/\n{2,}/)
+    .map((p) => `<p style="margin:0 0 1em 0">${p.replace(/\n/g, '<br/>')}</p>`)
+    .join('');
 export default function App() {
   const [view, setView] = useState('landing');
   const [openingDoorId, setOpeningDoorId] = useState(null);
@@ -2073,7 +2088,46 @@ ${recentDreamsSummary ? `ПОСЛЕДНИЕ СНЫ УЧЕНИКА ИЗ ДНЕВ�
     }
     setMentorLoading(false);
   };
-
+const renderFollowUpSection = (items, isHistoryView) => (
+    <div className="glass-panel text-font" style={{ marginTop: '2rem' }}>
+      <h3 className="mystic-font" style={{ color: '#ffe3a8', margin: '0 0 14px', textAlign: 'center' }}>
+        Уточняющий вопрос
+      </h3>
+      {(items || []).map((fu) => (
+        <div key={fu.id} style={{ marginBottom: '22px', paddingBottom: '18px', borderBottom: '1px solid rgba(229,176,92,0.3)' }}>
+          <div className="mystic-font" style={{ color: '#e5b05c', marginBottom: '10px', fontSize: '1.15rem' }}>✦ {fu.q}</div>
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+            {(fu.cards || []).map((c, i) => (
+              <div key={i} style={{ flex: 1, maxWidth: '70px' }}>
+                <TarotCardImage card={c} style={{ width: '100%', borderRadius: '6px', border: '1px solid #e5b05c', display: 'block' }} />
+              </div>
+            ))}
+          </div>
+          <div className="readable-analysis-text" dangerouslySetInnerHTML={{ __html: formatReadableText(fu.a) }} />
+        </div>
+      ))}
+      <div ref={followUpEndRef} />
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <input
+          className="text-font"
+          type="text"
+          placeholder="Задай уточняющий вопрос картам"
+          value={followUpInput}
+          onChange={(e) => setFollowUpInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') askFollowUpQuestion(isHistoryView); }}
+          style={{ flex: 1, padding: '14px 18px', borderRadius: '14px', border: '1px solid rgba(229,176,92,0.75)', background: 'rgba(6,3,18,0.82)', color: '#f8f1e5', fontSize: '1.15rem', outline: 'none' }}
+        />
+        <button
+          onClick={() => askFollowUpQuestion(isHistoryView)}
+          disabled={followUpLoading}
+          className="btn-magical"
+          style={{ padding: '0 20px', display: 'flex', alignItems: 'center' }}
+        >
+          {followUpLoading ? '…' : <Send size={18} />}
+        </button>
+      </div>
+    </div>
+  );
   const globalStylesInner = `
     @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Philosopher:wght@400;700&display=swap');
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
