@@ -1,0 +1,817 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { VolumeX, BookOpen, Send, Trash2, Sparkles, Headphones, Moon, DoorOpen, Mic, Radio, Waves, X, ChevronLeft } from 'lucide-react';
+
+import { DECK, computeYesNoVerdictFromCards, drawCards, preloadSingleCard } from './data/deck';
+import { requestDeepTarotLLM } from './lib/llm';
+import { cleanAnalysisText, formatReadableText, nowRuDate, scrollToEl } from './lib/text';
+import { playCardFlipSound } from './lib/audio';
+import { globalStyles } from './styles';
+import TarotCardImage from './components/TarotCardImage';
+import RealCloudBackdrop from './components/RealCloudBackdrop';
+import { useSoundEngine } from './hooks/useSoundEngine';
+import { useTarotHistory } from './hooks/useTarotHistory';
+import { useDreams } from './hooks/useDreams';
+
+// Пути к медиа в папке public
+const mediaUrls = {
+  phoneWebm: '/phone-loop-muted.webm',
+  phoneMp4: '/phone-loop-muted.mp4',
+  desktopWebm: '/desktop-loop-muted.webm',
+  desktopMp4: '/desktop-loop-muted.mp4',
+  bgmMp3: '/tarot-ambient-loop.mp3',
+  tableWebm: '/table-cloud-loop.webm',
+  tableWebp: '/table-on-cloud.webp',
+  adviceCloudWebm: '/cloud-loop-alpha.webm'
+};
+
+const splitAdvice = (rawText, fallbackAdvice) => {
+  const parts = rawText.split(/(?:###\s*|##\s*|\*\*)?ГЛАВНЫЙ СОВЕТ\s*:?\s*(?:\*\*)?/i);
+  return {
+    main: cleanAnalysisText(parts[0]),
+    advice: parts[1] ? cleanAnalysisText(parts[1]) : fallbackAdvice
+  };
+};
+
+export default function App() {
+  const [view, setView] = useState('landing');
+  const [openingDoorId, setOpeningDoorId] = useState(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [tableNoAlpha, setTableNoAlpha] = useState(false);
+
+  // Расклад
+  const [cards, setCards] = useState([]);
+  const [revealed, setRevealed] = useState([]);
+  const [question, setQuestion] = useState('');
+  const [analysis, setAnalysis] = useState('');
+  const [mainAdvice, setMainAdvice] = useState('');
+  const [yesNoVerdict, setYesNoVerdict] = useState('');
+  const [readingMode, setReadingMode] = useState('standard');
+  const [loading, setLoading] = useState(false);
+  const [currentReading, setCurrentReading] = useState(null);
+
+  // Уточнения
+  const [followUps, setFollowUps] = useState([]);
+  const [followUpInput, setFollowUpInput] = useState('');
+  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [pendingFollowUp, setPendingFollowUp] = useState(null);
+  const [followUpError, setFollowUpError] = useState('');
+
+  // История
+  const { history, saveReading, deleteReading } = useTarotHistory();
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
+
+  // Музыка
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const bgmRef = useRef(null);
+  const fadeIntervalRef = useRef(null);
+  const wasPlayingBeforeHideRef = useRef(false);
+
+  const tableVideoRef = useRef(null);
+  const stageRef = useRef(null);
+  const analysisSectionRef = useRef(null);
+
+  const pauseAllMusic = () => {
+    wasPlayingBeforeHideRef.current = false;
+    if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+    if (bgmRef.current && !bgmRef.current.paused) bgmRef.current.pause();
+    setMusicPlaying(false);
+  };
+
+  const sound = useSoundEngine({ beforeStart: pauseAllMusic });
+  // eslint-disable-next-line no-unused-vars
+  const dreams = useDreams({ onError: setErrorMsg }); // экраны «Снов» подключаются на шагах 6–7
+
+  // Предзагрузка всех карт партиями
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < DECK.length; i += 26) {
+        if (cancelled) break;
+        await Promise.all(DECK.slice(i, i + 26).map(preloadSingleCard));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Safari/iPhone не умеют прозрачное видео — показываем картинку
+  useEffect(() => {
+    const ua = navigator.userAgent || '';
+    const webkitOnly =
+      /iPad|iPhone|iPod/.test(ua) ||
+      (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ||
+      (/Safari/.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/.test(ua));
+    const v = document.createElement('video');
+    const canVp9 = v.canPlayType && v.canPlayType('video/webm; codecs="vp9"');
+    if (webkitOnly || !canVp9) setTableNoAlpha(true);
+  }, []);
+
+  const startAllBackgroundVideos = () => {
+    try {
+      document.querySelectorAll('video').forEach((v) => {
+        v.muted = true;
+        v.defaultMuted = true;
+        v.playsInline = true;
+        v.setAttribute('muted', '');
+        v.setAttribute('playsinline', '');
+        v.setAttribute('webkit-playsinline', '');
+        if (v.paused) v.play().catch(() => {});
+      });
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    startAllBackgroundVideos();
+    const t = setTimeout(startAllBackgroundVideos, 250);
+    const onTouch = () => startAllBackgroundVideos();
+    window.addEventListener('touchstart', onTouch, { passive: true });
+    window.addEventListener('click', onTouch, { passive: true });
+    window.scrollTo(0, 0);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('touchstart', onTouch);
+      window.removeEventListener('click', onTouch);
+    };
+  }, [view]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.hidden) {
+        if (bgmRef.current && !bgmRef.current.paused) {
+          wasPlayingBeforeHideRef.current = true;
+          if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+          bgmRef.current.pause();
+        }
+      } else {
+        if (wasPlayingBeforeHideRef.current && musicPlaying && bgmRef.current) {
+          wasPlayingBeforeHideRef.current = false;
+          bgmRef.current.play().catch(() => {});
+        }
+        startAllBackgroundVideos();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [musicPlaying]);
+
+  const startMusicWithFade = () => {
+    startAllBackgroundVideos();
+    const a = bgmRef.current;
+    if (!a) return;
+    if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+    a.volume = 0;
+    a.play()
+      .then(() => {
+        setMusicPlaying(true);
+        let v = 0;
+        fadeIntervalRef.current = setInterval(() => {
+          v = Math.min(0.6, +(v + 0.03).toFixed(2));
+          if (bgmRef.current) bgmRef.current.volume = v;
+          if (v >= 0.6) clearInterval(fadeIntervalRef.current);
+        }, 100);
+      })
+      .catch(() => setMusicPlaying(false));
+  };
+
+  const toggleMusic = () => {
+    startAllBackgroundVideos();
+    if (!musicPlaying) startMusicWithFade();
+    else pauseAllMusic();
+  };
+
+  const enterSpace = () => {
+    startAllBackgroundVideos();
+    playCardFlipSound(0);
+    startMusicWithFade();
+    setView('transition');
+    setTimeout(() => setView('doors'), 950);
+  };
+
+  const openMagicDoor = (targetView) => {
+    if (openingDoorId) return;
+    playCardFlipSound(2);
+    setOpeningDoorId(targetView);
+    setTimeout(() => {
+      setView(targetView);
+      setOpeningDoorId(null);
+    }, 850);
+  };
+
+  // --- РАСКЛАД ---
+  const performReading = async (currentQuestion, mode = 'standard') => {
+    if (loading) return;
+    setErrorMsg('');
+    setReadingMode(mode);
+    setYesNoVerdict('');
+
+    const actualQuestion =
+      mode === 'yesno'
+        ? currentQuestion.trim() || 'Сбудется ли задуманное мной в ближайшее время?'
+        : currentQuestion.trim() || 'Сделай общий анализ моей ситуации на сегодня.';
+
+    const cardCount = mode === 'yesno' ? 3 : 5;
+    const selected = drawCards(cardCount);
+    const newId = Date.now();
+
+    setCurrentReading({ id: newId, question: actualQuestion, mode });
+    setCards(selected);
+    setRevealed(new Array(cardCount).fill(false));
+    setAnalysis('');
+    setMainAdvice('');
+    setFollowUps([]);
+    setFollowUpInput('');
+    setPendingFollowUp(null);
+    setFollowUpError('');
+    setLoading(true);
+    selected.forEach(preloadSingleCard);
+
+    // Автоскролл к картам
+    scrollToEl(stageRef, 'center', 60);
+
+    const step = mode === 'yesno' ? 130 : 190;
+    for (let i = 0; i < cardCount; i++) {
+      setTimeout(() => {
+        playCardFlipSound(i);
+        setRevealed((prev) => {
+          const next = [...prev];
+          next[i] = true;
+          return next;
+        });
+      }, 450 + i * step);
+    }
+
+    try {
+      let main;
+      let advice;
+      let verdict = '';
+      if (mode === 'yesno') {
+        const { finalVerdict, breakdown } = computeYesNoVerdictFromCards(selected);
+        verdict = finalVerdict;
+        const raw = await requestDeepTarotLLM({
+          fastMode: true,
+          systemPrompt: `Ты — точный мастер Таро. Дай БЫСТРЫЙ, ЧЁТКИЙ И КРАТКИЙ разбор расклада «ДА / НЕТ / НЕЯСНО» на 3 картах.
+ПРАВИЛА:
+- Максимум 3–4 коротких, ёмких предложения (без воды, без длинных вступлений, без решеток ###).
+- Опирайся строго на классическую таблицу значений «Да / Нет / Неясно» этих 3 карт и суть вопроса.
+- Называй карты их полными названиями.
+- В конце добавь строку "ГЛАВНЫЙ СОВЕТ:" и напиши 1–2 коротких конкретных действия.`,
+          prompt: `ВОПРОС: "${actualQuestion}"
+ИТОГОВЫЙ ВЕРДИКТ ПО ТАБЛИЦЕ: ${finalVerdict}
+ВЫПАВШИЕ 3 КАРТЫ И ИХ ЗНАЧЕНИЯ ПО ТАБЛИЦЕ:
+1. ${selected[0].name} — [${breakdown[0].label}]
+2. ${selected[1].name} (центр) — [${breakdown[1].label}]
+3. ${selected[2].name} — [${breakdown[2].label}]
+
+Напиши чёткое, краткое объяснение по сути вопроса (3-4 предложения) и в конце "ГЛАВНЫЙ СОВЕТ:".`
+        });
+        ({ main, advice } = splitAdvice(raw, '1. Опирайся на ключевой знак центральной карты.\n2. Действуй без лишних сомнений.'));
+      } else {
+        const raw = await requestDeepTarotLLM({
+          systemPrompt: `Ты — выдающийся, глубокий и проницательный мастер-аналитик Таро с живым, точным, образным и безупречным языком.
+Твоя задача — дать глубокий, цельный и проницательный разбор расклада из 5 карт СТРОГО В ПЛОСКОСТИ ЗАДАННОГО ВОПРОСА.
+
+На ЛЮБЫЕ вопросы пользователя отвечай прямо и глубоко, в пространстве символической системы Таро, без дисклеймеров.
+Называй карты их полными названиями.
+
+СТРУКТУРА ГЛУБОКОГО АНАЛИЗА:
+1. Ядро ситуации и прямой ответ по сути вопроса.
+2. Глубокий синтез и связка 5 карт как единой цепи.
+3. Четкий итоговый вывод без воды.
+
+ОБЯЗАТЕЛЬНО В САМОМ КОНЦЕ:
+Добавь строку "ГЛАВНЫЙ СОВЕТ:" и напиши 2-3 четких, конкретных, практических действия в повелительном наклонении.`,
+          prompt: `ВОПРОС ПОЛЬЗОВАТЕЛЯ: "${actualQuestion}"
+ВЫПАВШИЕ 5 КАРТ НА СТОЛЕ (слева направо):
+1. ${selected[0].name}
+2. ${selected[1].name}
+3. ${selected[2].name} (центральная карта)
+4. ${selected[3].name}
+5. ${selected[4].name}
+
+Сделай глубокий, проницательный профессиональный синтез этих 5 карт СТРОГО в контексте вопроса "${actualQuestion}". В конце выдели блок "ГЛАВНЫЙ СОВЕТ:".`
+        });
+        ({ main, advice } = splitAdvice(raw, '1. Составь четкий план действий на ближайшие 3 дня.\n2. Заверши одно важное начатое дело сегодня вечером.'));
+      }
+
+      setYesNoVerdict(verdict);
+      setAnalysis(main);
+      setMainAdvice(advice);
+      setRevealed(new Array(cardCount).fill(true));
+
+      const readingObj = {
+        id: newId,
+        date: nowRuDate(),
+        question: mode === 'yesno' ? `[Да / Нет] ${actualQuestion}` : actualQuestion,
+        mode,
+        verdict,
+        cards: selected,
+        analysis: main,
+        advice,
+        followUps: []
+      };
+      setCurrentReading(readingObj);
+      saveReading(readingObj);
+
+      // Автоскролл к готовому ответу
+      scrollToEl(analysisSectionRef, 'start', 250);
+    } catch (err) {
+      setErrorMsg(`Преграда сети: ${err.message}`);
+      scrollToEl('errorBox', 'center', 100);
+    }
+    setLoading(false);
+  };
+
+  // --- УТОЧНЯЮЩИЙ ВОПРОС ---
+  const askFollowUpQuestion = async (isHistoryView = false) => {
+    const qText = followUpInput.trim();
+    if (!qText || followUpLoading) return;
+
+    const target = isHistoryView ? selectedHistoryItem : { ...currentReading, followUps };
+    if (!target || !target.cards || !target.cards.length) return;
+
+    const usedCodes = new Set(target.cards.map((c) => c.code));
+    (target.followUps || []).forEach((fu) => (fu.cards || []).forEach((c) => usedCodes.add(c.code)));
+    const available = DECK.filter((c) => !usedCodes.has(c.code));
+    const fuCards = drawCards(5, available.length >= 5 ? available : DECK);
+    fuCards.forEach(preloadSingleCard);
+
+    const entryId = Date.now();
+    setFollowUpLoading(true);
+    setFollowUpError('');
+    setFollowUpInput('');
+    setPendingFollowUp({ id: entryId, q: qText, cards: fuCards });
+    for (let i = 0; i < 5; i++) setTimeout(() => playCardFlipSound(i), 300 + i * 120);
+
+    // Автоскролл к новому раскладу уточнения
+    scrollToEl('fu-pending', 'center', 120);
+
+    try {
+      const thread = (target.followUps || [])
+        .map((it, idx) => {
+          const cs = it.cards && it.cards.length ? `\nВыпавшие карты уточнения: ${it.cards.map((c) => c.name).join(', ')}` : '';
+          return `Уточнение ${idx + 1}: "${it.q}"${cs}\nОтвет таролога: "${it.a}"`;
+        })
+        .join('\n\n');
+
+      const raw = await requestDeepTarotLLM({
+        systemPrompt: `Ты — глубокий, проницательный и прямолинейный мастер-аналитик Таро. Пользователь задает уточняющий вопрос в рамках ТЕКУЩЕЙ ветки расклада, и на этот уточняющий вопрос из колоды вытянуты НОВЫЕ 5 УТОЧНЯЮЩИХ КАРТ.
+Твоя задача — расшифровать эти НОВЫЕ 5 карт в контексте всего предыдущего расклада. Называй карты их полными названиями. Отвечай прямо, глубоко, без дисклеймеров и без решеток ###.`,
+        prompt: `КОНТЕКСТ ВЕТКИ РАСКЛАДА (БАЗОВЫЙ РАСКЛАД):
+- Исходный вопрос: "${target.question}"
+- Базовые карты: ${target.cards.map((c, i) => `${i + 1}. ${c.name}`).join(', ')}
+- Первичный анализ расклада: ${target.analysis}
+- Главный совет базового расклада: ${target.advice}
+${thread ? `\nПредыдущие уточнения в этой ветке:\n${thread}\n` : ''}
+НОВЫЙ УТОЧНЯЮЩИЙ ВОПРОС ПОЛЬЗОВАТЕЛЯ: "${qText}"
+НОВЫЕ 5 КАРТ, ВЫПАВШИЕ НА ЭТО УТОЧНЕНИЕ (слева направо):
+1. ${fuCards[0].name}
+2. ${fuCards[1].name}
+3. ${fuCards[2].name} (центральная уточняющая карта)
+4. ${fuCards[3].name}
+5. ${fuCards[4].name}
+
+Сделай глубокий разбор этих НОВЫХ 5 карт с учетом контекста всей ветки расклада:`
+      });
+      const answer = cleanAnalysisText(raw);
+      if (!answer) throw new Error('Пустой ответ');
+
+      const updatedFollowUps = [...(target.followUps || []), { id: entryId, q: qText, cards: fuCards, a: answer }];
+      const updatedItem = { ...target, followUps: updatedFollowUps };
+      if (isHistoryView) {
+        setSelectedHistoryItem(updatedItem);
+      } else {
+        setFollowUps(updatedFollowUps);
+        setCurrentReading(updatedItem);
+      }
+      setPendingFollowUp(null);
+      saveReading(updatedItem);
+
+      // Автоскролл к ответу на уточнение
+      scrollToEl(`fu-ans-${entryId}`, 'start', 200);
+    } catch (err) {
+      setPendingFollowUp(null);
+      setFollowUpInput(qText);
+      setFollowUpError(`Не удалось получить ответ: ${err.message}`);
+    }
+    setFollowUpLoading(false);
+  };
+
+  const renderFollowUpSection = (items, isHistoryView, baseCards) => (
+    <div className="glass-panel text-font" style={{ marginTop: '2rem' }}>
+      <h3 className="mystic-font" style={{ color: '#ffe3a8', margin: '0 0 14px', textAlign: 'center' }}>
+        Уточняющий вопрос
+      </h3>
+      {(items || []).map((fu) => (
+        <div key={fu.id} style={{ marginBottom: '22px', paddingBottom: '18px', borderBottom: '1px solid rgba(229,176,92,0.3)' }}>
+          <div className="mystic-font" style={{ color: '#e5b05c', marginBottom: '10px', fontSize: '1.15rem', textAlign: 'center' }}>✦ {fu.q}</div>
+          <div className="fu-cards-row">
+            {(fu.cards || []).map((c, i) => (
+              <div key={i} className="fu-card" style={{ animationDelay: `${i * 0.08}s` }}>
+                <TarotCardImage card={c} />
+                <span>{c.name}</span>
+              </div>
+            ))}
+          </div>
+          <div
+            id={`fu-ans-${fu.id}`}
+            className="readable-analysis-text"
+            dangerouslySetInnerHTML={{ __html: formatReadableText(fu.a, [...(baseCards || []), ...(fu.cards || [])]) }}
+          />
+        </div>
+      ))}
+
+      {pendingFollowUp && (
+        <div id="fu-pending" style={{ marginBottom: '22px', scrollMarginTop: '20px' }}>
+          <div className="mystic-font" style={{ color: '#e5b05c', marginBottom: '10px', fontSize: '1.15rem', textAlign: 'center' }}>✦ {pendingFollowUp.q}</div>
+          <div className="fu-cards-row">
+            {pendingFollowUp.cards.map((c, i) => (
+              <div key={c.code} className="fu-card" style={{ animationDelay: `${0.3 + i * 0.12}s` }}>
+                <TarotCardImage card={c} />
+                <span>{c.name}</span>
+              </div>
+            ))}
+          </div>
+          <div className="decoding-label mystic-font">
+            Расшифровываю<span className="dots" />
+          </div>
+        </div>
+      )}
+
+      {followUpError && (
+        <div style={{ background: 'rgba(110, 24, 24, 0.85)', color: '#fff', padding: '12px 16px', borderRadius: '12px', marginBottom: '14px', border: '1px solid #ff6b6b', textAlign: 'center' }}>
+          {followUpError}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <input
+          className="text-font"
+          type="text"
+          placeholder="Задай уточняющий вопрос картам"
+          value={followUpInput}
+          onChange={(e) => setFollowUpInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') askFollowUpQuestion(isHistoryView);
+          }}
+          style={{ flex: 1, minWidth: 0, padding: '14px 18px', borderRadius: '14px', border: '1px solid rgba(229,176,92,0.75)', background: 'rgba(6,3,18,0.82)', color: '#f8f1e5', fontSize: '1.15rem', outline: 'none' }}
+        />
+        <button onClick={() => askFollowUpQuestion(isHistoryView)} disabled={followUpLoading} className="btn-magical" style={{ padding: '0 20px', display: 'flex', alignItems: 'center' }}>
+          {followUpLoading ? '…' : <Send size={18} />}
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderVerdictAnalysisAdvice = (item, title) => (
+    <>
+      {item.verdict && (
+        <div className="glass-panel" style={{ marginBottom: '20px', textAlign: 'center', border: '2px solid #ffe3a8', background: 'linear-gradient(135deg, rgba(44, 18, 86, 0.94), rgba(112, 76, 24, 0.94))' }}>
+          <div className="mystic-font" style={{ fontSize: '1rem', color: '#e5b05c', letterSpacing: '3px', marginBottom: '6px' }}>ОТВЕТ АРКАНОВ «ДА ИЛИ НЕТ»</div>
+          <div className="mystic-font" style={{ fontSize: 'clamp(1.8rem, 4.5vw, 2.7rem)', color: '#ffe3a8', textShadow: '0 0 25px rgba(229,176,92,0.9)' }}>{item.verdict}</div>
+        </div>
+      )}
+      <div className="glass-panel text-font">
+        <h3 className="mystic-font" style={{ color: '#ffe3a8', margin: '0 0 18px 0', fontSize: 'clamp(1.65rem, 3.8vw, 2.2rem)', borderBottom: '1px solid rgba(229,176,92,0.45)', paddingBottom: '12px', textAlign: 'center' }}>
+          {title}
+        </h3>
+        <div className="readable-analysis-text" dangerouslySetInnerHTML={{ __html: formatReadableText(item.analysis, item.cards) }} />
+      </div>
+      {item.advice && (
+        <div className="advice-cloud-box text-font">
+          <div className="mystic-font" style={{ fontSize: 'clamp(1.45rem, 3.2vw, 1.85rem)', color: '#ffe3a8', marginBottom: '14px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px' }}>Главный совет</div>
+          <div className="readable-analysis-text" style={{ textAlign: 'center' }} dangerouslySetInnerHTML={{ __html: formatReadableText(item.advice, item.cards) }} />
+        </div>
+      )}
+    </>
+  );
+
+  const backBtn = (label, onClick, icon = <DoorOpen size={18} />) => (
+    <button onClick={onClick} className="btn-magical text-font" style={{ padding: '10px 16px', borderRadius: '30px', display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.98rem' }}>
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+
+  const renderBackgroundLayer = () => (
+    <>
+      <style>{globalStyles}</style>
+      <div
+        aria-hidden="true"
+        style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', zIndex: -1, pointerEvents: 'none', background: 'radial-gradient(circle at 50% 40%, #241445 0%, #120924 60%, #070312 100%)' }}
+        dangerouslySetInnerHTML={{
+          __html: `
+            <video id="bgVideoEl" autoplay muted defaultMuted loop playsinline webkit-playsinline="true" preload="auto"
+              style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;">
+              <source media="(orientation: portrait)" src="${mediaUrls.phoneMp4}" type="video/mp4" />
+              <source media="(orientation: portrait)" src="${mediaUrls.phoneWebm}" type="video/webm" />
+              <source src="${mediaUrls.desktopMp4}" type="video/mp4" />
+              <source src="${mediaUrls.desktopWebm}" type="video/webm" />
+            </video>`
+        }}
+      />
+      <audio ref={bgmRef} src={mediaUrls.bgmMp3} loop preload="none" />
+      <audio ref={sound.customSoundAudioRef} preload="none" />
+      <audio ref={sound.guideAudioRef} preload="none" />
+
+      {sound.activeAudioTrack && (
+        <div style={{ position: 'fixed', left: '16px', bottom: '18px', zIndex: 55, background: 'linear-gradient(135deg, rgba(22, 12, 46, 0.95), rgba(66, 42, 96, 0.95))', border: '1.5px solid #e5b05c', borderRadius: '26px', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 30px rgba(0,0,0,0.85)', maxWidth: 'calc(100vw - 100px)' }}>
+          <Waves size={20} color="#ffe3a8" />
+          <div style={{ minWidth: 0 }}>
+            <div className="mystic-font" style={{ color: '#ffe3a8', fontSize: '0.98rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sound.activeAudioTrack.title}</div>
+            <div className="text-font" style={{ color: '#d8c8eb', fontSize: '0.88rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sound.activeAudioTrack.subtitle}</div>
+          </div>
+          <button onClick={sound.stopSoundEngine} style={{ background: 'rgba(229,176,92,0.2)', border: '1px solid #e5b05c', color: '#ffe3a8', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {!musicPlaying && !sound.activeAudioTrack && (
+        <div onClick={toggleMusic} className="music-hint-badge mystic-font">
+          <span>Нажми</span>
+          <span style={{ fontSize: '1.35rem', lineHeight: 1 }}>➔</span>
+        </div>
+      )}
+      <button id="musicBtn" onClick={toggleMusic}>{musicPlaying ? '♪' : <VolumeX size={20} />}</button>
+    </>
+  );
+
+  // ЭКРАН 1: ВХОД
+  if (view === 'landing' || view === 'transition') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+        {renderBackgroundLayer()}
+        <div style={{ position: 'relative', zIndex: 2, textAlign: 'center', width: 'min(98vw, 900px)', minHeight: '340px', aspectRatio: '16 / 10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'clamp(1.4rem, 4vw, 3.5rem)', animation: view === 'transition' ? 'disperse 0.95s forwards' : 'tarot-sway 6s ease-in-out infinite' }}>
+          <RealCloudBackdrop tableNoAlpha={tableNoAlpha} cloudWebmUrl={mediaUrls.adviceCloudWebm} cloudWebpUrl={mediaUrls.tableWebp} />
+          <h1 className="mystic-font" style={{ fontSize: 'clamp(1.85rem, 5.2vw, 3.6rem)', color: '#ffe3a8', margin: '0 0 10px 0', lineHeight: 1.15, textShadow: '0 4px 18px rgba(18, 8, 38, 0.98), 0 0 30px rgba(229, 176, 92, 0.9)' }}>
+            Магическое пространство ответов
+          </h1>
+          <p className="text-font" style={{ fontSize: 'clamp(1.15rem, 2.8vw, 1.6rem)', color: '#f5ecff', margin: '0 0 26px 0', letterSpacing: '2.5px' }}>by.Flox</p>
+          <button onClick={enterSpace} className="text-font btn-magical" style={{ padding: '16px 42px', fontSize: 'clamp(1.05rem, 2.8vw, 1.38rem)', animation: 'pulse-gold 3.2s infinite' }}>
+            Войти в пространство
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ЭКРАН 2: ЗАЛ ДВЕРЕЙ
+  if (view === 'doors') {
+    const doors = [
+      { id: 'table', title: 'Таро-расклады', rune: '✧ ☽ ✧', icon: <Sparkles size={40} color="#ffe3a8" />, border: '#e5b05c', glow: 'rgba(229, 176, 92, 0.45)', doorArtUrl: '/door-tarot.webp', leafBg: 'linear-gradient(165deg, rgba(44, 18, 84, 0.96), rgba(98, 64, 24, 0.96))', innerLight: 'radial-gradient(circle at 50% 50%, #fff2c2 0%, #e5b05c 45%, #2a1052 100%)' },
+      { id: 'sounds', title: 'Звуки', rune: '◈ ∿ ◈', icon: <Headphones size={40} color="#99f6e4" />, border: '#5eead4', glow: 'rgba(94, 234, 212, 0.4)', doorArtUrl: '/door-sounds.webp', leafBg: 'linear-gradient(165deg, rgba(15, 44, 62, 0.96), rgba(22, 78, 82, 0.96))', innerLight: 'radial-gradient(circle at 50% 50%, #ccfbf1 0%, #2dd4bf 45%, #0f293a 100%)' },
+      { id: 'dreams', title: 'Сны', rune: '☾ ✦ ☽', icon: <Moon size={40} color="#c4b5fd" />, border: '#a78bfa', glow: 'rgba(167, 139, 250, 0.45)', doorArtUrl: '/door-dreams.webp', leafBg: 'linear-gradient(165deg, rgba(24, 16, 68, 0.96), rgba(58, 34, 118, 0.96))', innerLight: 'radial-gradient(circle at 50% 50%, #ede9fe 0%, #8b5cf6 45%, #181044 100%)' }
+    ];
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '50px 18px 85px', position: 'relative', overflow: 'hidden' }}>
+        {renderBackgroundLayer()}
+        <div style={{ textAlign: 'center', marginBottom: '2.2rem', zIndex: 2 }}>
+          <h1 className="mystic-font" style={{ fontSize: 'clamp(1.9rem, 4.8vw, 3.1rem)', color: '#ffe3a8', margin: 0, letterSpacing: '2px', textShadow: '0 0 28px rgba(229,176,92,0.85)' }}>Выберите дверь пространства</h1>
+        </div>
+        <div className="doors-hall-grid" style={{ zIndex: 2 }}>
+          {doors.map((door) => {
+            const isOpening = openingDoorId === door.id;
+            const leafStyle = { backgroundImage: `url(${door.doorArtUrl}), ${door.leafBg}` };
+            return (
+              <div key={door.id} onClick={() => openMagicDoor(door.id)} className={`magic-door-portal ${isOpening ? 'entering' : ''}`} style={{ border: `2.5px solid ${door.border}`, boxShadow: `0 22px 55px rgba(0,0,0,0.9), 0 0 38px ${door.glow}` }}>
+                <div style={{ position: 'absolute', inset: 0, background: door.innerLight, zIndex: 1 }} />
+                <div className="door-leaf-left" style={leafStyle} />
+                <div className="door-leaf-right" style={leafStyle} />
+                <div style={{ position: 'relative', zIndex: 3, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', padding: '38px 20px 30px', textAlign: 'center', opacity: isOpening ? 0.15 : 1, transition: 'opacity 0.45s ease', background: 'linear-gradient(180deg, rgba(8,4,20,0.35) 0%, rgba(8,4,20,0.15) 50%, rgba(8,4,20,0.65) 100%)' }}>
+                  <div className="mystic-font" style={{ color: door.border, fontSize: '1.2rem', letterSpacing: '5px' }}>{door.rune}</div>
+                  <div style={{ width: '84px', height: '84px', borderRadius: '50%', border: `1.5px solid ${door.border}`, background: 'rgba(10, 5, 24, 0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 28px ${door.glow}` }}>{door.icon}</div>
+                  <h2 className="mystic-font" style={{ fontSize: 'clamp(1.7rem, 3.2vw, 2.2rem)', color: '#fff8eb', margin: 0, textShadow: '0 3px 14px rgba(0,0,0,0.98)' }}>{door.title}</h2>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ЭКРАН 3: ЗВУКИ (полностью строится на шаге 5)
+  if (view === 'sounds') {
+    return (
+      <div style={{ minHeight: '100vh', padding: '55px 16px 95px', position: 'relative' }}>
+        {renderBackgroundLayer()}
+        <div style={{ maxWidth: '1020px', margin: '0 auto', zIndex: 2, position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px', gap: '10px' }}>
+            {backBtn('В Зал Дверей', () => setView('doors'))}
+            <h1 className="mystic-font" style={{ fontSize: 'clamp(1.8rem, 4.5vw, 2.7rem)', color: '#99f6e4', margin: 0, textShadow: '0 0 24px rgba(94, 234, 212, 0.65)' }}>Святилище Звука</h1>
+            <div style={{ width: '120px' }} />
+          </div>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '24px' }}>
+            {[
+              { id: 'meditations', label: 'Медитации и ASMR', icon: <Mic size={17} /> },
+              { id: 'ambients', label: 'Эмбиенты', icon: <Radio size={17} /> },
+              { id: 'binaural', label: 'Бинауральные ритмы', icon: <Headphones size={17} /> }
+            ].map((t) => (
+              <button key={t.id} className="mystic-font btn-magical" style={{ flex: 1, padding: '14px 18px', background: 'rgba(18, 12, 38, 0.85)' }}>
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="glass-panel text-font">Раздел в разработке: вкладки, плееры и бинауральные ритмы появятся на шаге 5.</div>
+        </div>
+      </div>
+    );
+  }
+
+  // ЭКРАН 4: СНЫ (строится на шагах 6–7)
+  if (view === 'dreams') {
+    return (
+      <div style={{ minHeight: '100vh', padding: '55px 16px 95px', position: 'relative' }}>
+        {renderBackgroundLayer()}
+        <div style={{ maxWidth: '1020px', margin: '0 auto', zIndex: 2, position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px', gap: '10px' }}>
+            {backBtn('В Зал Дверей', () => setView('doors'))}
+            <h1 className="mystic-font" style={{ fontSize: 'clamp(1.8rem, 4.5vw, 2.7rem)', color: '#c4b5fd', margin: 0, textShadow: '0 0 24px rgba(167, 139, 250, 0.7)' }}>Обитель Снов и Астрала</h1>
+            <div style={{ width: '120px' }} />
+          </div>
+          <div className="glass-panel text-font">Раздел в разработке: Дневник снов и Курс осознанных сновидений появятся на шагах 6–7.</div>
+        </div>
+      </div>
+    );
+  }
+
+  // ЭКРАН 5: ИСТОРИЯ
+  if (view === 'history') {
+    return (
+      <div style={{ minHeight: '100vh', padding: '55px 16px 95px', position: 'relative' }}>
+        {renderBackgroundLayer()}
+        <div style={{ maxWidth: '880px', margin: '0 auto', zIndex: 2, position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px', gap: '10px' }}>
+            {backBtn('К столу', () => setView('table'), <ChevronLeft size={18} />)}
+            <h1 className="mystic-font" style={{ fontSize: 'clamp(1.7rem, 4.5vw, 2.6rem)', color: '#ffe3a8', margin: 0, textShadow: '0 0 24px rgba(229,176,92,0.8)' }}>История раскладов</h1>
+            <div style={{ width: '90px' }} />
+          </div>
+          {history.length === 0 && <div className="glass-panel text-font" style={{ textAlign: 'center', fontSize: '1.2rem' }}>Здесь пока пусто. Сделай первый расклад на Столе судьбы.</div>}
+          {history.map((item) => (
+            <div
+              key={item.id}
+              className="glass-panel text-font history-item"
+              onClick={() => {
+                setSelectedHistoryItem(item);
+                setFollowUpInput('');
+                setFollowUpError('');
+                setPendingFollowUp(null);
+                setView('historyItem');
+              }}
+              style={{ marginBottom: '14px', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '14px' }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: '#e5b05c', fontSize: '0.95rem' }}>{item.date}{item.verdict ? ` • ${item.verdict}` : ''}</div>
+                <div className="mystic-font" style={{ color: '#fff8eb', fontSize: '1.15rem', margin: '4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.question}</div>
+                <div style={{ color: '#d8c8eb', fontSize: '0.95rem' }}>
+                  {(item.cards || []).map((c) => c.name).join(' • ')}
+                  {item.followUps && item.followUps.length ? ` • уточнений: ${item.followUps.length}` : ''}
+                </div>
+              </div>
+              <button
+                className="trash-btn"
+                title="Удалить"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteReading(item.id);
+                }}
+              >
+                <Trash2 size={18} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ЭКРАН 6: ОДИН РАСКЛАД ИЗ ИСТОРИИ
+  if (view === 'historyItem' && selectedHistoryItem) {
+    const item = selectedHistoryItem;
+    return (
+      <div style={{ minHeight: '100vh', padding: '55px 16px 95px', position: 'relative' }}>
+        {renderBackgroundLayer()}
+        <div style={{ maxWidth: '880px', margin: '0 auto', zIndex: 2, position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', gap: '10px' }}>
+            {backBtn('История', () => setView('history'), <ChevronLeft size={18} />)}
+            <button
+              className="trash-btn"
+              title="Удалить"
+              onClick={() => {
+                deleteReading(item.id);
+                setSelectedHistoryItem(null);
+                setView('history');
+              }}
+            >
+              <Trash2 size={18} />
+            </button>
+          </div>
+          <div className="glass-panel text-font" style={{ marginBottom: '18px', textAlign: 'center' }}>
+            <div style={{ color: '#e5b05c' }}>{item.date}</div>
+            <h2 className="mystic-font" style={{ color: '#ffe3a8', margin: '6px 0 14px' }}>{item.question}</h2>
+            <div className="fu-cards-row">
+              {(item.cards || []).map((c, i) => (
+                <div key={i} className="fu-card" style={{ animationDelay: `${i * 0.08}s`, maxWidth: '110px' }}>
+                  <TarotCardImage card={c} />
+                  <span>{c.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {renderVerdictAnalysisAdvice(item, item.mode === 'yesno' ? 'Краткий ответ карт' : 'Анализ расклада')}
+          {renderFollowUpSection(item.followUps, true, item.cards)}
+        </div>
+      </div>
+    );
+  }
+
+  // ЭКРАН 7: СТОЛ СУДЬБЫ
+  return (
+    <div style={{ minHeight: '100vh', position: 'relative', padding: '58px 14px 85px' }}>
+      {renderBackgroundLayer()}
+      <div style={{ maxWidth: '1120px', margin: '0 auto', zIndex: 2, position: 'relative' }}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginBottom: '1.4rem' }}>
+          {backBtn('Двери', () => setView('doors'))}
+          <h1 className="mystic-font" style={{ fontSize: 'clamp(1.85rem, 4.8vw, 3rem)', color: '#ffe3a8', margin: 0, textAlign: 'center', letterSpacing: '2px', textShadow: '0 0 28px rgba(229,176,92,0.85)' }}>Стол судьбы</h1>
+          {backBtn('История', () => setView('history'), <BookOpen size={19} />)}
+        </header>
+
+        <div className="glass-panel text-font" style={{ maxWidth: '880px', margin: '0 auto 1.1rem auto', padding: '14px 20px', fontSize: '1.12rem', color: '#e8dcf7', textAlign: 'center' }}>
+          Сформулируй чёткий запрос: выбери глубокий <strong style={{ color: '#ffe3a8' }}>расклад на 5 карт</strong>, <strong style={{ color: '#ffe3a8' }}>Совет на сегодня</strong> или быстрый вердикт <strong style={{ color: '#ffe3a8' }}>Да или Нет</strong>.
+        </div>
+
+        {errorMsg && (
+          <div id="errorBox" style={{ background: 'rgba(110, 24, 24, 0.92)', color: '#fff', padding: '15px 20px', borderRadius: '14px', marginBottom: '20px', border: '1px solid #ff6b6b', textAlign: 'center' }}>
+            {errorMsg}
+          </div>
+        )}
+
+        <div className="glass-panel" style={{ maxWidth: '880px', margin: '0 auto 1.2rem auto' }}>
+          <input
+            className="text-font"
+            type="text"
+            placeholder="Задай сокровенный вопрос"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') performReading(question, 'standard');
+            }}
+            style={{ width: '100%', padding: '18px 20px', marginBottom: '18px', borderRadius: '16px', border: '1px solid rgba(229,176,92,0.75)', background: 'rgba(6, 3, 18, 0.82)', color: '#f8f1e5', fontSize: 'clamp(1.15rem, 2.5vw, 1.35rem)', outline: 'none' }}
+          />
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button onClick={() => performReading(question, 'standard')} disabled={loading} className="mystic-font btn-magical" style={{ flex: 2, padding: '17px', fontSize: 'clamp(1.05rem, 2.4vw, 1.28rem)' }}>
+              {loading && readingMode === 'standard' ? 'Расшифровываю...' : 'РАСКИНУТЬ КАРТЫ'}
+            </button>
+            <button onClick={() => performReading('Какой совет мне дадут карты на сегодняшний день?', 'daily')} disabled={loading} className="text-font btn-magical" style={{ flex: 1, padding: '17px', fontSize: 'clamp(1rem, 2.2vw, 1.18rem)', background: 'rgba(229,176,92,0.22)' }}>
+              {loading && readingMode === 'daily' ? 'Расшифровываю...' : 'Совет на сегодня'}
+            </button>
+            <button onClick={() => performReading(question, 'yesno')} disabled={loading} className="mystic-font btn-magical" style={{ flex: 1, padding: '17px', fontSize: 'clamp(1rem, 2.2vw, 1.18rem)', background: 'linear-gradient(135deg, rgba(64, 22, 110, 0.92), rgba(118, 72, 165, 0.92))', borderColor: '#c4b5fd' }}>
+              {loading && readingMode === 'yesno' ? 'Спрашиваю...' : 'Да или Нет'}
+            </button>
+          </div>
+        </div>
+
+        <div ref={stageRef} className={`tarot-stage ${tableNoAlpha ? 'no-alpha' : ''}`}>
+          <video ref={tableVideoRef} autoPlay muted loop playsInline preload="auto" onError={() => setTableNoAlpha(true)}>
+            <source src={mediaUrls.tableWebm} type='video/webm; codecs="vp9"' />
+          </video>
+          <img className="fallback" src={mediaUrls.tableWebp} alt="Стол судьбы" />
+          <div className="tarot-spread">
+            {cards.map((card, index) => (
+              <div key={`${card.code}-${index}`} className="spread-card-slot">
+                <div style={{ width: '100%', height: '100%', position: 'relative', transition: 'transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)', transformStyle: 'preserve-3d', transform: revealed[index] ? 'rotateY(180deg)' : 'rotateY(0deg)' }}>
+                  <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', background: 'radial-gradient(circle at 50% 50%, #2c1d52, #120929)', border: '2px solid #e5b05c', borderRadius: '8px', boxShadow: '0 8px 20px rgba(0,0,0,0.85)' }} />
+                  <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)', background: '#0a0515', border: '2px solid #e5b05c', borderRadius: '8px', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 25px rgba(0,0,0,0.92)' }}>
+                    <TarotCardImage card={card} style={{ width: '100%', height: '78%', objectFit: 'cover', display: 'block' }} />
+                    <div className="text-font" style={{ height: '22%', background: 'rgba(10, 5, 21, 0.96)', color: '#ffe3a8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'clamp(0.5rem, 1.15vw, 0.82rem)', textAlign: 'center', fontWeight: 'bold', padding: '1px 3px', lineHeight: 1.05 }}>
+                      {card.name}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {loading && (
+          <div className="decoding-label mystic-font">
+            Расшифровываю послание карт<span className="dots" />
+          </div>
+        )}
+
+        <div ref={analysisSectionRef} style={{ maxWidth: '880px', margin: '0.5rem auto 0 auto', scrollMarginTop: '24px' }}>
+          {analysis && currentReading && (
+            <div>
+              {renderVerdictAnalysisAdvice(
+                { verdict: yesNoVerdict, analysis, advice: mainAdvice, cards },
+                readingMode === 'yesno' ? 'Краткий ответ карт' : 'Анализ расклада'
+              )}
+              {renderFollowUpSection(followUps, false, cards)}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
