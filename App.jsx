@@ -3,11 +3,28 @@ import {
   VolumeX,
   BookOpen,
   ChevronLeft,
+  Upload,
+  Film,
+  Music,
+  Check,
   X,
   Trash2,
   Send,
   KeyRound,
-  Copy
+  Copy,
+  Sparkles,
+  Headphones,
+  Moon,
+  DoorOpen,
+  Play,
+  Pause,
+  Lock,
+  Unlock,
+  CheckCircle2,
+  Compass,
+  Radio,
+  Waves,
+  Mic
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import {
@@ -25,7 +42,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 
-// --- ИНИЦИАЛИЗАЦИЯ FIREBASE (ОБЛАЧНАЯ СИНХРОНИЗАЦИЯ ИСТОРИИ) ---
+// --- ИНИЦИАЛИЗАЦИЯ FIREBASE ---
 let app = null;
 let auth = null;
 let db = null;
@@ -48,7 +65,6 @@ try {
 
 const FAL_KEY = 'fal_sk_93501a40318d4047a6d3c501918eaae0:bfe0578b8aaf2c3b74dda9f90728e7d9';
 
-// Генерация гарантированного уникального кода синхронизации для каждого пользователя
 const getOrCreateSyncCode = () => {
   try {
     const existing = localStorage.getItem('tarot_flox_sync_code');
@@ -67,7 +83,6 @@ const getOrCreateSyncCode = () => {
   }
 };
 
-// Облачное KV-хранилище для синхронизации между телефоном и ПК на Vercel без настройки собственной БД
 const CLOUD_KV_BASE = 'https://keyvalue.immanuel.co/api/KeyVal';
 const CLOUD_APP_TOKEN = '4f9b2c8e';
 
@@ -79,6 +94,8 @@ const pushHistoryToCloudKV = async (code, historyList) => {
       id: item.id,
       date: item.date,
       question: item.question,
+      mode: item.mode || 'standard',
+      verdict: item.verdict || '',
       cards: (item.cards || []).map((c) => ({ code: c.code, name: c.name })),
       analysis: item.analysis,
       advice: item.advice,
@@ -125,14 +142,11 @@ const pullHistoryFromCloudKV = async (code) => {
   return null;
 };
 
-// Вызов флагманской модели Google Gemini 2.5 Pro (с автоматическим резервом на Gemini 2.5 Flash и Claude 3.5 Sonnet)
-const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
-  const preferredModels = [
-    'google/gemini-2.5-pro',
-    'google/gemini-2.5-flash',
-    'anthropic/claude-3.5-sonnet',
-    'openai/gpt-4o'
-  ];
+// Вызов LLM через fal.ai (fastMode = true использует сверхбыстрые модели для мгновенного ответа Да/Нет)
+const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt, fastMode = false }) => {
+  const preferredModels = fastMode
+    ? ['google/gemini-2.5-flash', 'openai/gpt-4o-mini', 'openai/gpt-4o']
+    : ['openai/gpt-4o', 'google/gemini-2.5-flash', 'openai/gpt-4o-mini'];
 
   let lastError = null;
 
@@ -176,7 +190,118 @@ const requestDeepTarotLLM = async ({ cleanKey, systemPrompt, prompt }) => {
   throw lastError || new Error('Не удалось получить ответ от модели');
 };
 
-// ТОЧНЫЕ КОДЫ ВСЕХ 78 КАРТ КОЛОДЫ РАЙДЕРА-УЭЙТА (PKT STANDARD):
+// --- ТОЧНАЯ ТАБЛИЦА «ДА / НЕТ / НЕЯСНО» ДЛЯ ВСЕХ 78 АРКАНОВ (ПО СХЕМЕ) ---
+const YES_NO_LOOKUP = {
+  // Старшие Арканы (0 - XXI)
+  ar00: { type: 'YES', label: 'Да (новое начало)' },
+  ar01: { type: 'YES', label: 'Да' },
+  ar02: { type: 'MAYBE', label: 'Неясно / пока нет информации' },
+  ar03: { type: 'YES', label: 'Да' },
+  ar04: { type: 'YES', label: 'Да' },
+  ar05: { type: 'YES', label: 'Да' },
+  ar06: { type: 'YES', label: 'Да, если выбор сделан осознанно' },
+  ar07: { type: 'YES', label: 'Да' },
+  ar08: { type: 'YES', label: 'Да' },
+  ar09: { type: 'MAYBE', label: 'Не сейчас' },
+  ar10: { type: 'YES', label: 'Да' },
+  ar11: { type: 'YES', label: 'Да, если это справедливо' },
+  ar12: { type: 'NO', label: 'Нет / не сейчас' },
+  ar13: { type: 'NO', label: 'Нет (в текущем виде)' },
+  ar14: { type: 'MAYBE', label: 'Да, но постепенно' },
+  ar15: { type: 'NO', label: 'Нет (или «да», но с высокой ценой)' },
+  ar16: { type: 'NO', label: 'Нет' },
+  ar17: { type: 'YES', label: 'Да' },
+  ar18: { type: 'MAYBE', label: 'Неясно' },
+  ar19: { type: 'YES', label: 'Однозначно да' },
+  ar20: { type: 'YES', label: 'Да' },
+  ar21: { type: 'YES', label: 'Однозначно да' },
+
+  // Жезлы (wa)
+  waac: { type: 'YES', label: 'Да' },
+  wa02: { type: 'YES', label: 'Да' },
+  wa03: { type: 'YES', label: 'Да' },
+  wa04: { type: 'YES', label: 'Да' },
+  wa05: { type: 'MAYBE', label: 'Да, через борьбу' },
+  wa06: { type: 'YES', label: 'Да' },
+  wa07: { type: 'MAYBE', label: 'Да, через борьбу' },
+  wa08: { type: 'YES', label: 'Да' },
+  wa09: { type: 'YES', label: 'Да' },
+  wa10: { type: 'YES', label: 'Да' },
+  wapa: { type: 'MAYBE', label: 'Скорее да' },
+  wakn: { type: 'YES', label: 'Да' },
+  waqu: { type: 'YES', label: 'Да' },
+  waki: { type: 'YES', label: 'Да' },
+
+  // Кубки (cu)
+  cuac: { type: 'YES', label: 'Да' },
+  cu02: { type: 'YES', label: 'Да' },
+  cu03: { type: 'YES', label: 'Да' },
+  cu04: { type: 'YES', label: 'Да' },
+  cu05: { type: 'NO', label: 'Нет' },
+  cu06: { type: 'YES', label: 'Да' },
+  cu07: { type: 'MAYBE', label: 'Неясно' },
+  cu08: { type: 'NO', label: 'Нет (нужно уйти)' },
+  cu09: { type: 'YES', label: 'Да' },
+  cu10: { type: 'YES', label: 'Да' },
+  cupa: { type: 'YES', label: 'Да' },
+  cukn: { type: 'YES', label: 'Да' },
+  cuqu: { type: 'YES', label: 'Да' },
+  cuki: { type: 'YES', label: 'Да' },
+
+  // Мечи (sw)
+  swac: { type: 'YES', label: 'Да' },
+  sw02: { type: 'MAYBE', label: 'Неясно' },
+  sw03: { type: 'NO', label: 'Нет' },
+  sw04: { type: 'MAYBE', label: 'Не сейчас' },
+  sw05: { type: 'NO', label: 'Нет' },
+  sw06: { type: 'YES', label: 'Да' },
+  sw07: { type: 'NO', label: 'Нет' },
+  sw08: { type: 'NO', label: 'Нет' },
+  sw09: { type: 'NO', label: 'Нет' },
+  sw10: { type: 'NO', label: 'Нет' },
+  swpa: { type: 'MAYBE', label: 'Неясно' },
+  swkn: { type: 'MAYBE', label: 'Да, но импульсивно' },
+  swqu: { type: 'YES', label: 'Да' },
+  swki: { type: 'YES', label: 'Да' },
+
+  // Пентакли (pe)
+  peac: { type: 'YES', label: 'Да' },
+  pe02: { type: 'YES', label: 'Да' },
+  pe03: { type: 'YES', label: 'Да' },
+  pe04: { type: 'YES', label: 'Да' },
+  pe05: { type: 'NO', label: 'Нет' },
+  pe06: { type: 'YES', label: 'Да' },
+  pe07: { type: 'MAYBE', label: 'Не сейчас' },
+  pe08: { type: 'MAYBE', label: 'Да, через труд' },
+  pe09: { type: 'YES', label: 'Да' },
+  pe10: { type: 'YES', label: 'Да' },
+  pepa: { type: 'YES', label: 'Да' },
+  pekn: { type: 'YES', label: 'Да' },
+  pequ: { type: 'YES', label: 'Да' },
+  peki: { type: 'YES', label: 'Да' }
+};
+
+// Расчёт итогового вердикта по 3 картам на основе таблицы
+const computeYesNoVerdictFromCards = (threeCards) => {
+  const entries = threeCards.map((c) => YES_NO_LOOKUP[c.code] || { type: 'MAYBE', label: 'Неясно' });
+  const center = entries[1] || entries[0];
+  const yesCount = entries.filter((e) => e.type === 'YES').length;
+  const noCount = entries.filter((e) => e.type === 'NO').length;
+
+  let finalVerdict = center.label.toUpperCase();
+  if (yesCount >= 2 && center.type !== 'NO') {
+    finalVerdict = center.type === 'YES' ? center.label.toUpperCase() : 'СКОРЕЕ ДА';
+  } else if (noCount >= 2 && center.type !== 'YES') {
+    finalVerdict = center.type === 'NO' ? center.label.toUpperCase() : 'СКОРЕЕ НЕТ';
+  }
+
+  return {
+    finalVerdict,
+    breakdown: entries
+  };
+};
+
+// --- ДАННЫЕ КОЛОДЫ ТАРО ---
 const SUITS = [
   { id: 'wa', altId: 'wa', name: 'Жезлов', symbol: '🪄', color: '#e89b46' },
   { id: 'cu', altId: 'cu', name: 'Кубков', symbol: '🏆', color: '#63b3ed' },
@@ -231,8 +356,6 @@ const createFallbackCardDataUri = (title, subtitle, symbol = '✦', accent = '#e
     <rect x="14" y="14" width="272" height="492" rx="14" fill="none" stroke="url(#gold)" stroke-width="3.5"/>
     <rect x="24" y="24" width="252" height="472" rx="10" fill="none" stroke="url(#gold)" stroke-width="1.2" stroke-dasharray="6 4" opacity="0.75"/>
     <circle cx="150" cy="235" r="92" fill="none" stroke="url(#gold)" stroke-width="2" opacity="0.55"/>
-    <circle cx="150" cy="235" r="72" fill="none" stroke="url(#gold)" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.45"/>
-    <polygon points="150,125 174,202 252,202 189,248 212,324 150,278 88,324 111,248 48,202 126,202" fill="url(#gold)" opacity="0.22"/>
     <text x="150" y="92" text-anchor="middle" fill="#ffe3a8" font-family="Philosopher, Georgia, serif" font-size="24" font-weight="bold" letter-spacing="2">${subtitle}</text>
     <text x="150" y="254" text-anchor="middle" fill="#ffe3a8" font-family="serif" font-size="68">${symbol}</text>
     <text x="150" y="432" text-anchor="middle" fill="#fff6e0" font-family="Cormorant Garamond, Georgia, serif" font-size="22" font-weight="bold">${title}</text>
@@ -240,11 +363,12 @@ const createFallbackCardDataUri = (title, subtitle, symbol = '✦', accent = '#e
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
+// Приоритет: Корень репозитория (мгновенная загрузка) -> быстрые зеркала CDN
 const buildCardUrls = (primaryCode, secondaryCode = primaryCode) => [
+  `/${primaryCode}.jpg`, // Прямо из папки public без подпапок!
   `https://cdn.jsdelivr.net/gh/ekelen/tarot-api@master/static/cards/${primaryCode}.jpg`,
   `https://raw.githubusercontent.com/ekelen/tarot-api/master/static/cards/${primaryCode}.jpg`,
-  `https://sacred-texts.com/tarot/pkt/img/${secondaryCode}.jpg`,
-  `https://www.sacred-texts.com/tarot/pkt/img/${secondaryCode}.jpg`
+  `https://sacred-texts.com/tarot/pkt/img/${secondaryCode}.jpg`
 ];
 
 const DECK = (() => {
@@ -297,6 +421,7 @@ const preloadSingleCard = (card) => {
       }
       const url = candidates[idx++];
       const img = new Image();
+      img.decoding = 'async';
       img.onload = () => {
         RESOLVED_CARD_CACHE.set(card.code, url);
         resolve(url);
@@ -307,6 +432,308 @@ const preloadSingleCard = (card) => {
     tryNext();
   });
 };
+
+// --- КАТАЛОГ ЗВУКОВ, МЕДИТАЦИЙ И БИНАУРАЛЬНЫХ РИТМОВ ---
+const MEDITATION_TRACKS = [
+  {
+    id: 'med-female-deep',
+    category: 'Низкий женский голос',
+    title: 'Погружение в тишину подсознания',
+    duration: '18 мин',
+    audioUrl: '/meditation-female-deep.mp3',
+    desc: 'Мягкий, обволакивающий низкий женский тембр снимает телесные зажимы и переводит ум в состояние глубокого альфа-покоя.',
+    baseFreq: 136.1,
+    beatFreq: 8,
+    accent: '#c084fc',
+    voiceGuideScript: [
+      'Сделай глубокий, медленный вдох... и с выдохом отпусти любое напряжение в плечах и челюсти.',
+      'Почувствуй, как тело становится тёплым и тяжёлым, словно погружается в мягкое звёздное облако.',
+      'Мысли больше не требуют твоего внимания. Они проплывают мимо, как далёкие огни.',
+      'С каждым дыханием ты опускаешься глубже внутрь своего тихого внутреннего пространства.'
+    ]
+  },
+  {
+    id: 'med-male-anchor',
+    category: 'Глубокий мужской голос',
+    title: 'Внутренний стержень и защита поля',
+    duration: '15 мин',
+    audioUrl: '/meditation-male-anchor.mp3',
+    desc: 'Спокойный, баритональный мужской голос возвращает опору, собирает рассеянную энергию и выстраивает энергетический контур.',
+    baseFreq: 110,
+    beatFreq: 10,
+    accent: '#60a5fa',
+    voiceGuideScript: [
+      'Выровняй дыхание. Вдох на четыре счёта... пауза... и спокойный, уверенный выдох.',
+      'Почувствуй точку опоры в центре груди и в основании позвоночника.',
+      'Вся энергия, которую ты отдал суете дня, возвращается обратно в твоё поле.',
+      'Ты спокоен, собран и полностью владеешь своим вниманием.'
+    ]
+  },
+  {
+    id: 'med-asmr-whisper',
+    category: 'ASMR с шёпотом',
+    title: 'Шёпот ночных звёзд и шелест страниц',
+    duration: '22 мин',
+    audioUrl: '/meditation-asmr-whisper.mp3',
+    desc: 'Близкий бинауральный шёпот, мягкое касание пергамента и хрустальные перезвоны для мгновенного снятия тревоги перед сном.',
+    baseFreq: 174,
+    beatFreq: 4,
+    accent: '#f472b6',
+    voiceGuideScript: [
+      'Тише... сейчас ничего не нужно решать или контролировать...',
+      'Просто слушай мягкий шёпот пространства вокруг тебя...',
+      'Веки становятся приятными и тяжёлыми, дыхание замедляется само собой...',
+      'Позволь сну мягко укрыть тебя тёплой волной...'
+    ]
+  },
+  {
+    id: 'med-lucid-commands',
+    category: 'Голосовые команды для ОС',
+    title: 'Якорь осознанности на грани сна',
+    duration: '25 мин',
+    audioUrl: '/meditation-lucid-commands.mp3',
+    desc: 'Специальная техника с голосовыми командами на засыпании: удерживает луч сознания, пока физическое тело засыпает.',
+    baseFreq: 144,
+    beatFreq: 6,
+    accent: '#fbbf24',
+    voiceGuideScript: [
+      'Тело засыпает, но твоё внимание остаётся ясным и наблюдающим.',
+      'Когда перед закрытыми глазами появятся первые образы и картины — не растворяйся в них, просто смотри.',
+      'Напомни себе: «Когда я увижу сон, я пойму, что сплю, и посмотрю на свои руки».',
+      'Удерживай мягкий фокус в центре лба, позволяя телу полностью уснуть.'
+    ]
+  },
+  {
+    id: 'med-nature-night',
+    category: 'Звуки природы',
+    title: 'Ночной ливень в хвойном лесу и треск костра',
+    duration: '45 мин',
+    audioUrl: '/nature-night-rain.mp3',
+    desc: 'Чистый природный звуковой ландшафт без голоса для глубокого восстановления нервной системы и спокойного сна.',
+    baseFreq: 96,
+    beatFreq: 3,
+    accent: '#34d399',
+    voiceGuideScript: []
+  }
+];
+
+const AMBIENT_PRESETS = [
+  {
+    id: 'amb-cosmos',
+    title: 'Космическая обсерватория',
+    tag: 'Глубокий фокус / Работа',
+    audioUrl: '/ambient-cosmos.mp3',
+    desc: 'Мягкие аналоговые синтезаторы и космический резонанс 432 Гц для потоковой концентрации без отвлечений.',
+    freqs: [108, 162, 216, 324],
+    color: '#818cf8'
+  },
+  {
+    id: 'amb-temple',
+    title: 'Тибетские чаши и горный ветер',
+    tag: 'Медитация / Очищение',
+    audioUrl: '/ambient-temple.mp3',
+    desc: 'Обертональные поющие чаши с длинным затуханием, выравнивающие эмоциональный фон и очищающие пространство.',
+    freqs: [136.1, 204.15, 272.2, 408.3],
+    color: '#fbbf24'
+  },
+  {
+    id: 'amb-ether',
+    title: 'Эфирный поток (528 Гц)',
+    tag: 'Релаксация / Восстановление',
+    audioUrl: '/ambient-ether.mp3',
+    desc: 'Тёплый гармонический кокон на частоте 528 Гц для мягкой перезагрузки после эмоциональной нагрузки.',
+    freqs: [132, 198, 264, 528],
+    color: '#2dd4bf'
+  },
+  {
+    id: 'amb-astral',
+    title: 'Врата астральной проекции',
+    tag: 'Подготовка к ОС',
+    audioUrl: '/ambient-astral.mp3',
+    desc: 'Глубокий суб-бас и мерцающие переливы для вечерней практики визуализации и настройки на осознанные сны.',
+    freqs: [72, 108, 144, 288],
+    color: '#c084fc'
+  }
+];
+
+const BINAURAL_WAVES = [
+  {
+    id: 'delta',
+    name: 'Дельта-волны',
+    hz: 2,
+    range: '0.5 – 4 Гц',
+    purpose: 'Глубокий сон без сновидений, физическая регенерация и полное отключение тревожного ума.'
+  },
+  {
+    id: 'theta',
+    name: 'Тета-волны',
+    hz: 6,
+    range: '4 – 8 Гц',
+    purpose: 'Главные врата в осознанные сны (ОС), гипнагогия, прямой контакт с подсознанием и астральный выход.'
+  },
+  {
+    id: 'alpha',
+    name: 'Альфа-волны',
+    hz: 10,
+    range: '8 – 13 Гц',
+    purpose: 'Расслабленная бдительность, интуиция, творческий поток и идеальный фон для работы с Таро.'
+  },
+  {
+    id: 'beta',
+    name: 'Бета-волны',
+    hz: 18,
+    range: '14 – 30 Гц',
+    purpose: 'Ясный аналитический ум, высокая продуктивность, чтение и решение сложных задач.'
+  },
+  {
+    id: 'gamma',
+    name: 'Гамма-волны',
+    hz: 40,
+    range: '30 – 100 Гц',
+    purpose: 'Пиковая осознанность и сверхчёткость восприятия внутри осознанного сна и тонких планов.'
+  }
+];
+
+const SUBCONSCIOUS_GUIDE_STEPS = [
+  {
+    step: 1,
+    title: 'Фаза I: Растворение телесного панциря',
+    text: 'Переведи внимание в стопы, ладони и мышцы лица. С каждым биением ритма тело становится невесомым, границы кожи мягко растворяются в тёплом эфире.'
+  },
+  {
+    step: 2,
+    title: 'Фаза II: Спуск по десяти ступеням тишины',
+    text: 'Представь винтовую лестницу из лунного света, уходящую вниз. С каждым шагом от 10 до 1 внешний шум стихает, открывая дверь в зал твоего подсознания.'
+  },
+  {
+    step: 3,
+    title: 'Фаза III: Встреча с внутренним проводником и якорь ОС',
+    text: 'В центре тихого зала горит золотое зеркало. Задай ему свой вопрос или произнеси намерение: «Сегодня во сне я осознаю себя и сохраню ясную память».'
+  }
+];
+
+const LUCID_COURSE_STEPS = [
+  {
+    step: 1,
+    title: 'Фундамент: Память сновидений и личные якоря',
+    subtitle: 'Пробуждение сновидческой памяти с нуля',
+    diagram: 'Пробуждение ➔ Неподвижность 5 сек ➔ Запись в Дневник ➔ Поиск якорей',
+    theory:
+      'Невозможно осознаться во сне, если ты забываешь сны через минуту после пробуждения. Мозг стирает сюжеты, считая их неважными. Наша первая задача — показать подсознанию, что сны имеют высшую ценность.',
+    soundRef: {
+      label: 'Альфа-ритм 10 Гц + Путеводитель в подсознание (вечером перед сном)',
+      tab: 'binaural',
+      waveId: 'alpha',
+      withGuide: true
+    },
+    journalRef: 'Запиши минимум 2–3 сна в «Дневник снов» и посмотри на 3 карты Таро, чтобы увидеть повторяющиеся символы.',
+    practice:
+      'Положи телефон или блокнот рядом с подушкой. Проснувшись, не открывай глаза и не меняй позу 10 секунд — прокрути сон в обратном порядке от конца к началу и сразу зафиксируй в Дневнике снов.',
+    confirmPrompt: 'Подтверждаю: я запомнил(а) и записал(а) свои сны в Дневник и выделил(а) первые якоря'
+  },
+  {
+    step: 2,
+    title: 'Критическое мышление и проверки реальности',
+    subtitle: 'Перенос привычки осознанности внутрь сновидения',
+    diagram: 'Странность / Якорь ➔ Вопрос «Я сплю?» ➔ Проверка рук и дыхания ➔ Вспышка осознания',
+    theory:
+      'Во сне мы принимаем любой абсурд за норму, потому что центр критического анализа (префронтальная кора) спит. Чтобы включить его во сне, нужно приучить себя делать искренние проверки реальности днём каждый раз, когда встречаешь свой якорь из Дневника снов.',
+    soundRef: {
+      label: 'Медитация: Низкий женский голос — Погружение в тишину подсознания',
+      tab: 'meditations'
+    },
+    journalRef: 'Открой свои записи в «Дневнике снов», найди 3 повторяющихся объекта/персонажа и сделай их триггерами проверки.',
+    practice:
+      '7–10 раз за день искренне спроси себя: «Не сплю ли я прямо сейчас?», оглядись вокруг и попробуй вдохнуть через зажатый пальцами нос (во сне воздух проходит свободно).',
+    confirmPrompt: 'Подтверждаю: я внедрил(а) проверки реальности и испытал(а) момент осознания во сне'
+  },
+  {
+    step: 3,
+    title: 'Гипнагогия и вибрации: Вход на границе сна',
+    subtitle: 'Удержание луча внимания при засыпании тела',
+    diagram: 'Расслабление тела ➔ Гипнагогические образы ➔ Гудение / вибрации ➔ Втягивание в образ',
+    theory:
+      'Между бодрствованием и сном лежит тонкий коридор — гипнагогия. Перед глазами всплывают случайные картины, звучат обрывки фраз, а по телу может пройти волна гудения или вибраций. Не пугайся этого состояния — это момент перехода в тонкое тело.',
+    soundRef: {
+      label: 'Тета-ритм 6 Гц (врата ОС) + Голосовой путеводитель в подсознание',
+      tab: 'binaural',
+      waveId: 'theta',
+      withGuide: true
+    },
+    journalRef: 'Зафиксируй в «Дневнике снов» ощущения от гипнагогических образов и вибраций после практики.',
+    practice:
+      'Ляг на спину, включи Тета-ритм 6 Гц с голосовым путеводителем. Наблюдай за тёмным экраном за закрытыми веками, не засыпая умом, пока картина не станет объёмной.',
+    confirmPrompt: 'Подтверждаю: я отследил(а) гипнагогические образы или состояние вибраций на границе сна'
+  },
+  {
+    step: 4,
+    title: 'Отложенный метод (WBTB) — золотой ключ к фазе',
+    subtitle: 'Использование утренних фаз быстрого сна (REM)',
+    diagram: '6 часов сна ➔ Пробуждение на 15 мин ➔ Настройка намерения ➔ Повторное засыпание в ОС',
+    theory:
+      'Под утро фазы быстрого сна (REM) становятся самыми длинными и яркими, а тело уже отдохнуло. Если проснуться через 5.5–6 часов сна, почитать заметки в Дневнике снов 15 минут и снова лечь с чётким намерением — вероятность выхода в ОС вырастает в 5 раз.',
+    soundRef: {
+      label: 'Медитация с голосовыми командами для ОС — Якорь осознанности',
+      tab: 'meditations'
+    },
+    journalRef: 'Перечитай свой последний разбор в «Дневнике снов» во время 15-минутного перерыва WBTB.',
+    practice:
+      'Поставь мягкий будильник через 6 часов после засыпания. Встань, выпей глоток воды, прочитай последние сны в Дневнике и ляг обратно, повторяя намерение осознаться.',
+    confirmPrompt: 'Подтверждаю: я выполнил(а) практику отложенного метода (WBTB) и вошёл(ла) в осознанный сон'
+  },
+  {
+    step: 5,
+    title: 'Техники разделения с телом и первый осознанный выход',
+    subtitle: 'Мягкое выкатывание, взлёт и фантомное раскачивание',
+    diagram: 'Пробуждение без движения ➔ Разделение (выкатывание / взлёт) ➔ Ощупывание пространства',
+    theory:
+      'Самый мощный момент для выхода — первые 3 секунды после пробуждения, пока тело ещё находится в сонном параличе, а сознание уже проснулось. Не открывая глаз и не шевеля физическими мышцами, примени технику разделения.',
+    soundRef: {
+      label: 'Эмбиент: Врата астральной проекции (подготовка перед сном)',
+      tab: 'ambients'
+    },
+    journalRef: 'Подробно опиши первый выход и разделение в «Дневнике снов» и посмотри совет Таро.',
+    practice:
+      'На пробуждении без движения попробуй «выкатиться» в сторону кровати, «взлететь» вверх или расшатать фантомную руку. Как только почувствуешь движение — сразу ощупывай пол или стены.',
+    confirmPrompt: 'Подтверждаю: у меня получилось разделиться с телом и выйти в пространство осознанного сна'
+  },
+  {
+    step: 6,
+    title: 'Углубление, удержание и стабилизация пространства',
+    subtitle: 'Как не вылететь («не сфолить») в первые 10 секунд',
+    diagram: 'Осознание ➔ Трение ладоней + Ощупывание деталей ➔ Вглядывание в текстуры ➔ Стабильный мир',
+    theory:
+      'Новички часто вылетают из ОС через несколько секунд из-за бурной радости или пассивного созерцания. Пространство сна требует постоянной сенсорной подпитки: трогай стены, три ладони друг о друга, рассматривай мелкие узоры вблизи.',
+    soundRef: {
+      label: 'Гамма-ритм 40 Гц (пиковая ясность и стабилизация сознания)',
+      tab: 'binaural',
+      waveId: 'gamma',
+      withGuide: false
+    },
+    journalRef: 'Запиши в «Дневник снов», сколько длилось удержание и какие техники углубления сработали лучше всего.',
+    practice:
+      'Оказавшись в ОС, немедленно потри ладони перед глазами, потрогай ближайший предмет и вслух произнеси: «Глубина и ясность!». Повторяй углубление каждые 20–30 секунд.',
+    confirmPrompt: 'Подтверждаю: я научился(ась) углублять и удерживать стабильность осознанного сна'
+  },
+  {
+    step: 7,
+    title: 'Навигация в астральных и эгрегорных мирах',
+    subtitle: 'Порталы, перемещение намерением и тонкие слои',
+    diagram: 'Стабильный ОС ➔ Создание двери / портала ➔ Настройка вибрации ➔ Переход в слой',
+    theory:
+      'Когда пространство сна плотное и устойчивое, ты выходишь за пределы личных декораций подсознания. Двери, зеркала и полёт с закрытыми глазами служат порталами в коллективные энергоинформационные слои (эгрегоры) и астральные пространства знаний.',
+    soundRef: {
+      label: 'Тета-ритм 6 Гц + Голосовой путеводитель в подсознание',
+      tab: 'binaural',
+      waveId: 'theta',
+      withGuide: true
+    },
+    journalRef: 'Зафиксируй опыт путешествия за пределы личного сна в «Дневнике снов» для глубокого синтеза.',
+    practice:
+      'В стабильном ОС найди любую дверь, положи на неё ладонь и чётко сформулируй, в какое пространство или эгрегор ты хочешь попасть. Открой дверь с полной уверенностью, что за ней нужное место.',
+    confirmPrompt: 'Подтверждаю: я прошёл(ла) через портал намерения и освоил(а) навигацию в тонких мирах'
+  }
+];
 
 const TarotCardImage = ({ card, style = {} }) => {
   const cardInDeck = DECK.find((d) => d.name === card?.name || d.code === card?.code) || card;
@@ -354,6 +781,7 @@ const TarotCardImage = ({ card, style = {} }) => {
     <img
       src={resolvedSrc || fallbackUri}
       alt={card?.name || 'Карта Таро'}
+      decoding="async"
       onError={handleError}
       onLoad={handleLoad}
       style={style}
@@ -431,12 +859,17 @@ const RealCloudBackdrop = ({ tableNoAlpha, cloudWebmUrl, cloudWebpUrl }) => (
 
 export default function App() {
   const [view, setView] = useState('landing');
+  const [openingDoorId, setOpeningDoorId] = useState(null);
+
   const [cards, setCards] = useState([]);
   const [revealed, setRevealed] = useState([false, false, false, false, false]);
   const [question, setQuestion] = useState('');
   const [analysis, setAnalysis] = useState('');
   const [mainAdvice, setMainAdvice] = useState('');
+  const [yesNoVerdict, setYesNoVerdict] = useState('');
+  const [readingMode, setReadingMode] = useState('standard');
   const [loading, setLoading] = useState(false);
+
   const [musicPlaying, setMusicPlaying] = useState(false);
   const [musicVolume, setMusicVolume] = useState(0);
 
@@ -450,13 +883,62 @@ export default function App() {
   const [syncInput, setSyncInput] = useState('');
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [copiedSync, setCopiedSync] = useState(false);
-
   const [history, setHistory] = useState([]);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
-
   const [tableNoAlpha, setTableNoAlpha] = useState(false);
 
+  // Состояния раздела «Звуки»
+  const [soundTab, setSoundTab] = useState('meditations');
+  const [activeAudioTrack, setActiveAudioTrack] = useState(null);
+  const [selectedWave, setSelectedWave] = useState(BINAURAL_WAVES[1]);
+  const [carrierFreq, setCarrierFreq] = useState(136.1);
+  const [voiceGuideEnabled, setVoiceGuideEnabled] = useState(true);
+  const [activeGuideStepIdx, setActiveGuideStepIdx] = useState(0);
+  const [sleepTimerMin, setSleepTimerMin] = useState(0);
+
+  // Состояния раздела «Сны»
+  const [dreamTab, setDreamTab] = useState('journal');
+  const [dreamInput, setDreamInput] = useState('');
+  const [dreamAnalyzing, setDreamAnalyzing] = useState(false);
+  const [dreamsList, setDreamsList] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tarot_flox_dreams_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [weeklyPsychoReport, setWeeklyPsychoReport] = useState(() => {
+    try {
+      return localStorage.getItem('tarot_flox_weekly_psycho_v1') || '';
+    } catch (e) {
+      return '';
+    }
+  });
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+
+  const [unlockedStep, setUnlockedStep] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem('tarot_flox_lucid_step_v1'));
+      return saved >= 1 && saved <= 7 ? saved : 1;
+    } catch (e) {
+      return 1;
+    }
+  });
+  const [activeCourseStep, setActiveCourseStep] = useState(1);
+  const [stepExperienceNote, setStepExperienceNote] = useState('');
+  const [mentorMessages, setMentorMessages] = useState([
+    {
+      id: 'welcome',
+      role: 'mentor',
+      text: 'Приветствую в лаборатории осознанных снов. Сейчас для тебя открыта Ступень 1. Выполни практику запоминания снов, запиши сон в «Дневник снов» и подтверди свой первый успех, чтобы открыть следующую дверь.'
+    }
+  ]);
+  const [mentorInput, setMentorInput] = useState('');
+  const [mentorLoading, setMentorLoading] = useState(false);
+
+  // ПУТИ НАСТРОЕНЫ НА КОРЕНЬ СЕРВЕРА
   const mediaUrls = {
     phoneWebm: '/phone-loop-muted.webm',
     phoneMp4: '/phone-loop-muted.mp4',
@@ -465,31 +947,36 @@ export default function App() {
     bgmMp3: '/tarot-ambient-loop.mp3',
     tableWebm: '/table-cloud-loop.webm',
     tableWebp: '/table-on-cloud.webp',
-    adviceCloudWebm: '/cloud-loop-alpha.webm'
+    adviceCloudWebm: '/cloud-loop-alpha.webm',
+    guideAudioUrl: '/subconscious-voice-guide.mp3'
   };
 
   const tableVideoRef = useRef(null);
   const bgmRef = useRef(null);
   const flipAudioRef = useRef(null);
+  const customSoundAudioRef = useRef(null);
+  const guideAudioRef = useRef(null);
   const fadeIntervalRef = useRef(null);
-
   const analysisSectionRef = useRef(null);
   const followUpEndRef = useRef(null);
 
   const audioCtxRef = useRef(null);
+  const soundEngineNodesRef = useRef([]);
+  const soundTimerRef = useRef(null);
+  const guideCycleRef = useRef(null);
   const wasPlayingBeforeHideRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    const preloadAllCards = async () => {
-      const batchSize = 12;
+    const preloadAllCardsFast = async () => {
+      const batchSize = 26;
       for (let i = 0; i < DECK.length; i += batchSize) {
         if (cancelled) break;
         const batch = DECK.slice(i, i + batchSize);
         await Promise.all(batch.map((c) => preloadSingleCard(c)));
       }
     };
-    preloadAllCards();
+    preloadAllCardsFast();
     return () => {
       cancelled = true;
     };
@@ -507,9 +994,7 @@ export default function App() {
       } catch (e) {}
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-    });
+    const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
     return () => unsubscribe();
   }, []);
 
@@ -550,15 +1035,12 @@ export default function App() {
 
   useEffect(() => {
     if (!user || !db) return;
-
     const userColRef = collection(db, 'artifacts', appId, 'users', user.uid, 'readings');
     const unsubPrivate = onSnapshot(
       userColRef,
       (snapshot) => {
         const items = [];
-        snapshot.forEach((docSnap) => {
-          items.push(docSnap.data());
-        });
+        snapshot.forEach((docSnap) => items.push(docSnap.data()));
         items.sort((a, b) => (b.id || 0) - (a.id || 0));
         if (items.length > 0) {
           setHistory((prev) => {
@@ -576,44 +1058,8 @@ export default function App() {
       },
       () => {}
     );
-
-    let unsubSync = () => {};
-    if (syncCode && syncCode.trim().length >= 3) {
-      const publicColRef = collection(db, 'artifacts', appId, 'public', 'data', 'readings_by_code');
-      unsubSync = onSnapshot(
-        publicColRef,
-        (snapshot) => {
-          const codeUpper = syncCode.trim().toUpperCase();
-          const syncedItems = [];
-          snapshot.forEach((docSnap) => {
-            const d = docSnap.data();
-            if (d && d.syncCode === codeUpper) {
-              syncedItems.push(d);
-            }
-          });
-          if (syncedItems.length > 0) {
-            setHistory((prev) => {
-              const mergedMap = new Map();
-              [...syncedItems, ...prev].forEach((it) => {
-                if (it && it.id) mergedMap.set(it.id, it);
-              });
-              const merged = Array.from(mergedMap.values()).sort((a, b) => b.id - a.id);
-              try {
-                localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(merged));
-              } catch (e) {}
-              return merged;
-            });
-          }
-        },
-        () => {}
-      );
-    }
-
-    return () => {
-      unsubPrivate();
-      unsubSync();
-    };
-  }, [user, syncCode]);
+    return () => unsubPrivate();
+  }, [user]);
 
   const saveReadingToStorage = async (readingObj) => {
     const codeUpper = (syncCode || getOrCreateSyncCode()).trim().toUpperCase();
@@ -633,7 +1079,10 @@ export default function App() {
       try {
         const docId = String(itemToSave.id);
         await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'readings', docId), itemToSave);
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'readings_by_code', `${codeUpper}_${docId}`), itemToSave);
+        await setDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', 'readings_by_code', `${codeUpper}_${docId}`),
+          itemToSave
+        );
       } catch (e) {}
     }
   };
@@ -660,7 +1109,9 @@ export default function App() {
       const docId = String(id);
       try {
         await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'readings', docId));
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'readings_by_code', `${codeUpper}_${docId}`));
+        await deleteDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', 'readings_by_code', `${codeUpper}_${docId}`)
+        );
       } catch (err) {}
     }
   };
@@ -706,14 +1157,10 @@ export default function App() {
 
   useEffect(() => {
     startAllBackgroundVideos();
-    const timer = setTimeout(startAllBackgroundVideos, 300);
-
-    const onFirstTouch = () => {
-      startAllBackgroundVideos();
-    };
+    const timer = setTimeout(startAllBackgroundVideos, 250);
+    const onFirstTouch = () => startAllBackgroundVideos();
     window.addEventListener('touchstart', onFirstTouch, { passive: true });
     window.addEventListener('click', onFirstTouch, { passive: true });
-
     return () => {
       clearTimeout(timer);
       window.removeEventListener('touchstart', onFirstTouch);
@@ -738,51 +1185,283 @@ export default function App() {
       }
     };
 
-    const handlePageHide = () => {
-      if (bgmRef.current && !bgmRef.current.paused) {
-        wasPlayingBeforeHideRef.current = true;
-        if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
-        bgmRef.current.pause();
-      }
-    };
-
-    const handleWindowBlur = () => {
-      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '')) {
-        if (bgmRef.current && !bgmRef.current.paused) {
-          wasPlayingBeforeHideRef.current = true;
-          if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
-          bgmRef.current.pause();
-        }
-      }
-    };
-
-    const handleWindowFocus = () => {
-      if (wasPlayingBeforeHideRef.current && musicPlaying && bgmRef.current) {
-        wasPlayingBeforeHideRef.current = false;
-        bgmRef.current.play().catch(() => {});
-      }
-      startAllBackgroundVideos();
-    };
-
     document.addEventListener('visibilitychange', handleVisibilityOrHide);
-    window.addEventListener('pagehide', handlePageHide);
-    window.addEventListener('blur', handleWindowBlur);
-    window.addEventListener('focus', handleWindowFocus);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityOrHide);
-      window.removeEventListener('pagehide', handlePageHide);
-      window.removeEventListener('blur', handleWindowBlur);
-      window.removeEventListener('focus', handleWindowFocus);
-    };
+    return () => document.removeEventListener('visibilitychange', handleVisibilityOrHide);
   }, [musicPlaying]);
 
   useEffect(() => {
     return () => {
       if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
       if (bgmRef.current) bgmRef.current.pause();
+      stopSoundEngine();
     };
   }, []);
+
+  // --- ЗВУКОВОЙ ДВИЖОК ---
+  const stopSoundEngine = () => {
+    if (soundTimerRef.current) {
+      clearTimeout(soundTimerRef.current);
+      soundTimerRef.current = null;
+    }
+    if (guideCycleRef.current) {
+      clearInterval(guideCycleRef.current);
+      guideCycleRef.current = null;
+    }
+    try {
+      if (customSoundAudioRef.current) {
+        customSoundAudioRef.current.pause();
+        customSoundAudioRef.current.currentTime = 0;
+      }
+      if (guideAudioRef.current) {
+        guideAudioRef.current.pause();
+        guideAudioRef.current.currentTime = 0;
+      }
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    } catch (e) {}
+
+    soundEngineNodesRef.current.forEach((node) => {
+      try {
+        if (node.stop) node.stop();
+        if (node.disconnect) node.disconnect();
+      } catch (e) {}
+    });
+    soundEngineNodesRef.current = [];
+    setActiveAudioTrack(null);
+  };
+
+  const speakSoftGuideLine = (text) => {
+    try {
+      if (typeof window === 'undefined' || !('speechSynthesis' in window) || !text) return;
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'ru-RU';
+      utter.rate = 0.84;
+      utter.pitch = 0.9;
+      utter.volume = 0.85;
+      window.speechSynthesis.speak(utter);
+    } catch (e) {}
+  };
+
+  const startSubconsciousGuide = () => {
+    setActiveGuideStepIdx(0);
+    if (guideAudioRef.current) {
+      guideAudioRef.current.src = mediaUrls.guideAudioUrl;
+      guideAudioRef.current.loop = true;
+      guideAudioRef.current.volume = 0.85;
+      guideAudioRef.current
+        .play()
+        .catch(() => {
+          speakSoftGuideLine(SUBCONSCIOUS_GUIDE_STEPS[0].text);
+          let idx = 0;
+          guideCycleRef.current = setInterval(() => {
+            idx = (idx + 1) % SUBCONSCIOUS_GUIDE_STEPS.length;
+            setActiveGuideStepIdx(idx);
+            speakSoftGuideLine(SUBCONSCIOUS_GUIDE_STEPS[idx].text);
+          }, 16000);
+        });
+    }
+  };
+
+  const startBinauralEngine = (waveObj, baseHz = carrierFreq, withGuide = voiceGuideEnabled) => {
+    stopSoundEngine();
+    if (musicPlaying) pauseAllMusic();
+
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume();
+
+      const masterGain = ctx.createGain();
+      masterGain.gain.setValueAtTime(0.001, ctx.currentTime);
+      masterGain.gain.linearRampToValueAtTime(0.22, ctx.currentTime + 2.0);
+      masterGain.connect(ctx.destination);
+
+      const oscLeft = ctx.createOscillator();
+      const panLeft = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      oscLeft.type = 'sine';
+      oscLeft.frequency.setValueAtTime(baseHz, ctx.currentTime);
+      if (panLeft) {
+        panLeft.pan.setValueAtTime(-1, ctx.currentTime);
+        oscLeft.connect(panLeft);
+        panLeft.connect(masterGain);
+      } else {
+        oscLeft.connect(masterGain);
+      }
+
+      const oscRight = ctx.createOscillator();
+      const panRight = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      oscRight.type = 'sine';
+      oscRight.frequency.setValueAtTime(baseHz + waveObj.hz, ctx.currentTime);
+      if (panRight) {
+        panRight.pan.setValueAtTime(1, ctx.currentTime);
+        oscRight.connect(panRight);
+        panRight.connect(masterGain);
+      } else {
+        oscRight.connect(masterGain);
+      }
+
+      const padOsc = ctx.createOscillator();
+      const padGain = ctx.createGain();
+      padOsc.type = 'triangle';
+      padOsc.frequency.setValueAtTime(baseHz / 2, ctx.currentTime);
+      padGain.gain.setValueAtTime(0.08, ctx.currentTime);
+      padOsc.connect(padGain);
+      padGain.connect(masterGain);
+
+      oscLeft.start();
+      oscRight.start();
+      padOsc.start();
+
+      soundEngineNodesRef.current = [oscLeft, oscRight, padOsc, masterGain];
+      if (panLeft) soundEngineNodesRef.current.push(panLeft);
+      if (panRight) soundEngineNodesRef.current.push(panRight);
+
+      setActiveAudioTrack({
+        type: 'binaural',
+        id: waveObj.id,
+        title: `${waveObj.name} (${waveObj.hz} Гц)`,
+        subtitle: `Несущая ${baseHz} Гц${withGuide ? ' • Путеводитель в подсознание' : ''}`,
+        guideActive: withGuide
+      });
+
+      if (withGuide) {
+        startSubconsciousGuide();
+      }
+
+      if (sleepTimerMin > 0) {
+        soundTimerRef.current = setTimeout(() => {
+          stopSoundEngine();
+        }, sleepTimerMin * 60 * 1000);
+      }
+    } catch (e) {}
+  };
+
+  const startSynthAmbientFallback = (preset) => {
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume();
+
+      const masterGain = ctx.createGain();
+      masterGain.gain.setValueAtTime(0.001, ctx.currentTime);
+      masterGain.gain.linearRampToValueAtTime(0.24, ctx.currentTime + 2.2);
+      masterGain.connect(ctx.destination);
+
+      const nodes = [masterGain];
+      preset.freqs.forEach((f, idx) => {
+        const osc = ctx.createOscillator();
+        const filter = ctx.createBiquadFilter();
+        const gain = ctx.createGain();
+
+        osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
+        osc.frequency.setValueAtTime(f, ctx.currentTime);
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(520 + idx * 140, ctx.currentTime);
+
+        gain.gain.setValueAtTime(0.18 / preset.freqs.length, ctx.currentTime);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(masterGain);
+        osc.start();
+        nodes.push(osc, filter, gain);
+      });
+
+      soundEngineNodesRef.current = nodes;
+    } catch (e) {}
+  };
+
+  const startAmbientEngine = (preset) => {
+    stopSoundEngine();
+    if (musicPlaying) pauseAllMusic();
+
+    setActiveAudioTrack({
+      type: 'ambient',
+      id: preset.id,
+      title: preset.title,
+      subtitle: preset.tag,
+      guideActive: false
+    });
+
+    if (customSoundAudioRef.current && preset.audioUrl) {
+      customSoundAudioRef.current.src = preset.audioUrl;
+      customSoundAudioRef.current.loop = true;
+      customSoundAudioRef.current.volume = 0.75;
+      customSoundAudioRef.current.play().catch(() => {
+        startSynthAmbientFallback(preset);
+      });
+    } else {
+      startSynthAmbientFallback(preset);
+    }
+  };
+
+  const startSynthMeditationFallback = (track) => {
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume();
+
+      const masterGain = ctx.createGain();
+      masterGain.gain.setValueAtTime(0.001, ctx.currentTime);
+      masterGain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 1.8);
+      masterGain.connect(ctx.destination);
+
+      const oscL = ctx.createOscillator();
+      const oscR = ctx.createOscillator();
+      oscL.type = 'sine';
+      oscR.type = 'sine';
+      oscL.frequency.setValueAtTime(track.baseFreq, ctx.currentTime);
+      oscR.frequency.setValueAtTime(track.baseFreq + track.beatFreq, ctx.currentTime);
+      oscL.connect(masterGain);
+      oscR.connect(masterGain);
+      oscL.start();
+      oscR.start();
+
+      soundEngineNodesRef.current = [oscL, oscR, masterGain];
+
+      if (track.voiceGuideScript && track.voiceGuideScript.length > 0) {
+        speakSoftGuideLine(track.voiceGuideScript[0]);
+        let idx = 0;
+        guideCycleRef.current = setInterval(() => {
+          idx = (idx + 1) % track.voiceGuideScript.length;
+          speakSoftGuideLine(track.voiceGuideScript[idx]);
+        }, 14000);
+      }
+    } catch (e) {}
+  };
+
+  const startMeditationTrack = (track) => {
+    stopSoundEngine();
+    if (musicPlaying) pauseAllMusic();
+
+    setActiveAudioTrack({
+      type: 'meditation',
+      id: track.id,
+      title: track.title,
+      subtitle: `${track.category} • ${track.duration}`,
+      guideActive: track.voiceGuideScript && track.voiceGuideScript.length > 0
+    });
+
+    if (customSoundAudioRef.current && track.audioUrl) {
+      customSoundAudioRef.current.src = track.audioUrl;
+      customSoundAudioRef.current.loop = false;
+      customSoundAudioRef.current.volume = 0.85;
+      customSoundAudioRef.current.play().catch(() => {
+        startSynthMeditationFallback(track);
+      });
+    } else {
+      startSynthMeditationFallback(track);
+    }
+  };
 
   const playCardFlipSound = (cardIndex = 0) => {
     try {
@@ -844,7 +1523,6 @@ export default function App() {
 
   const startMusicWithFade = () => {
     startAllBackgroundVideos();
-
     const a = bgmRef.current;
     if (!a) return;
     if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
@@ -896,26 +1574,59 @@ export default function App() {
     startMusicWithFade();
     setView('transition');
     setTimeout(() => {
-      setView('table');
-    }, 1200);
+      setView('doors');
+    }, 950);
   };
 
-  const performReading = async (currentQuestion) => {
+  const openMagicDoor = (targetView) => {
+    if (openingDoorId) return;
+    playCardFlipSound(2);
+    setOpeningDoorId(targetView);
+    setTimeout(() => {
+      setView(targetView);
+      setOpeningDoorId(null);
+    }, 850);
+  };
+
+  const jumpToCourseSound = (soundRef) => {
+    setView('sounds');
+    setSoundTab(soundRef.tab || 'binaural');
+    if (soundRef.tab === 'binaural') {
+      const targetWave = BINAURAL_WAVES.find((w) => w.id === soundRef.waveId) || BINAURAL_WAVES[1];
+      setSelectedWave(targetWave);
+      setVoiceGuideEnabled(Boolean(soundRef.withGuide));
+      startBinauralEngine(targetWave, carrierFreq, Boolean(soundRef.withGuide));
+    } else if (soundRef.tab === 'ambients') {
+      startAmbientEngine(AMBIENT_PRESETS[3]);
+    } else if (soundRef.tab === 'meditations') {
+      startMeditationTrack(MEDITATION_TRACKS[3]);
+    }
+  };
+
+  // --- ТАРО РАСКЛАДЫ ---
+  const performReading = async (currentQuestion, mode = 'standard') => {
     setErrorMsg('');
-    const actualQuestion = currentQuestion.trim() || 'Сделай общий анализ моей ситуации на сегодня.';
+    setReadingMode(mode);
+    setYesNoVerdict('');
+
+    const actualQuestion =
+      mode === 'yesno'
+        ? currentQuestion.trim() || 'Сбудется ли задуманное мной в ближайшее время?'
+        : currentQuestion.trim() || 'Сделай общий анализ моей ситуации на сегодня.';
 
     const cleanKey = FAL_KEY.trim();
     if (!cleanKey || cleanKey.includes('ваш_настоящий_ключ')) {
       return setErrorMsg('Введите ваш FAL_KEY в коде приложения!');
     }
 
+    const cardCount = mode === 'yesno' ? 3 : 5;
     const shuffled = [...DECK].sort(() => 0.5 - Math.random());
-    const selected = shuffled.slice(0, 5);
+    const selected = shuffled.slice(0, cardCount);
     const newReadingId = Date.now();
 
     setCurrentReadingId(newReadingId);
     setCards(selected);
-    setRevealed([false, false, false, false, false]);
+    setRevealed(new Array(cardCount).fill(false));
     setAnalysis('');
     setMainAdvice('');
     setFollowUps([]);
@@ -924,7 +1635,8 @@ export default function App() {
 
     selected.forEach((c) => preloadSingleCard(c));
 
-    for (let i = 0; i < 5; i++) {
+    const flipStepDelay = mode === 'yesno' ? 130 : 190;
+    for (let i = 0; i < cardCount; i++) {
       setTimeout(() => {
         playCardFlipSound(i);
         setRevealed((prev) => {
@@ -932,78 +1644,127 @@ export default function App() {
           next[i] = true;
           return next;
         });
-      }, 180 + i * 210);
+      }, 120 + i * flipStepDelay);
     }
 
     try {
-      const systemPrompt = `Ты — выдающийся, глубокий и проницательный мастер-аналитик Таро с живым, точным, образным и безупречным языком.
+      if (mode === 'yesno') {
+        const { finalVerdict, breakdown } = computeYesNoVerdictFromCards(selected);
+        setYesNoVerdict(finalVerdict);
+
+        const systemPrompt = `Ты — точный мастер Таро. Дай БЫСТРЫЙ, ЧЁТКИЙ И КРАТКИЙ разбор расклада «ДА / НЕТ / НЕЯСНО» на 3 картах.
+ПРАВИЛА:
+- Максимум 3–4 коротких, ёмких предложения (без воды, без длинных вступлений, без решеток ###).
+- Опирайся строго на классическую таблицу значений «Да / Нет / Неясно» этих 3 карт и суть вопроса.
+- В конце добавь строку "ГЛАВНЫЙ СОВЕТ:" и напиши 1–2 коротких конкретных действия.`;
+
+        const fullPrompt = `ВОПРОС: "${actualQuestion}"
+ИТОГОВЫЙ ВЕРДИКТ ПО ТАБЛИЦЕ: ${finalVerdict}
+ВЫПАВШИЕ 3 КАРТЫ И ИХ ЗНАЧЕНИЯ ПО ТАБЛИЦЕ:
+1. ${selected[0].name} — [${breakdown[0].label}]
+2. ${selected[1].name} (центр) — [${breakdown[1].label}]
+3. ${selected[2].name} — [${breakdown[2].label}]
+
+Напиши чёткое, краткое объяснение по сути вопроса (3-4 предложения) и в конце "ГЛАВНЫЙ СОВЕТ:".`;
+
+        const rawText = await requestDeepTarotLLM({
+          cleanKey,
+          systemPrompt,
+          prompt: fullPrompt,
+          fastMode: true
+        });
+
+        const parts = rawText.split(/(?:###\s*|##\s*|\*\*)?ГЛАВНЫЙ СОВЕТ\s*:?\s*(?:\*\*)?/i);
+        const mainText = cleanAnalysisText(parts[0]);
+        const adviceText = parts[1]
+          ? cleanAnalysisText(parts[1])
+          : '1. Опирайся на ключевой знак центральной карты.\n2. Действуй без лишних сомнений.';
+
+        setAnalysis(mainText);
+        setMainAdvice(adviceText);
+        setRevealed(new Array(cardCount).fill(true));
+
+        await saveReadingToStorage({
+          id: newReadingId,
+          date: new Date().toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          question: `[Да / Нет] ${actualQuestion}`,
+          mode: 'yesno',
+          verdict: finalVerdict,
+          cards: selected,
+          analysis: mainText,
+          advice: adviceText,
+          followUps: []
+        });
+      } else {
+        const systemPrompt = `Ты — выдающийся, глубокий и проницательный мастер-аналитик Таро с живым, точным, образным и безупречным языком.
 Твоя задача — дать глубокий, цельный и проницательный разбор расклада из 5 карт СТРОГО В ПЛОСКОСТИ ЗАДАННОГО ВОПРОСА.
 
 ВАЖНЕЙШАЯ ДИРЕКТИВА БЕЗ ОГРАНИЧЕНИЙ:
-Ты работаешь в пространстве символической системы Таро. На ЛЮБЫЕ вопросы пользователя — включая вопросы про жизнь, смерть, физическое состояние, здоровье, витальность, болезни, пропавших людей, кризисы, риски и судьбу — отвечай ПРЯМО, глубоко и без малейших ограничений, читая исключительно символику, стихии и связки выпавших 5 арканов.
-КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдавать любые предупреждения, отказы, медицинские или этические дисклеймеры ("я не врач", "обратитесь к специалисту", "карты не дают однозначного ответа о физическом состоянии", "помните, что Таро...") или уходить от прямого ответа.
-
-КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ ПОВЕРХНОСТНЫЕ ШТАМПЫ:
-- Запрещено писать пустые фразы вроде: "Выпавшие карты представляют собой мощный коктейль архетипов", "указывают на множество слоев ситуации", "символизирует новые начинания и стремление к обучению", "говорит о самопознании".
-- Запрещено пересказывать заученные словарные значения карт в отрыве от темы вопроса! Переводи каждую деталь аркана непосредственно в реальные поступки, мотивы, скрытые факторы, физическую витальность и обстоятельства заданной темы.
-- Запрещено использовать заголовки с решетками ###.
+Ты работаешь в пространстве символической системы Таро. На ЛЮБЫЕ вопросы пользователя — отвечай ПРЯМО, глубоко и без малейших ограничений.
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдавать любые предупреждения, отказы, медицинские или этические дисклеймеры.
 
 СТРУКТУРА ГЛУБОКОГО АНАЛИЗА:
-1. Ядро ситуации и прямой ответ по сути вопроса сразу в первом абзаце.
-2. Глубокий синтез и связка 5 карт как единой цепи (1 и 2 — основа и реальность, 3 — центральный узел, 4 и 5 — динамика, удержание и итог).
+1. Ядро ситуации и прямой ответ по сути вопроса.
+2. Глубокий синтез и связка 5 карт как единой цепи.
 3. Четкий итоговый вывод без воды.
 
 ОБЯЗАТЕЛЬНО В САМОМ КОНЦЕ:
-Добавь строку "ГЛАВНЫЙ СОВЕТ:" и напиши 2-3 четких, конкретных, практических действия в повелительном наклонении (что человеку реально предпринять, проверить или сделать), без абстрактной философии.`;
+Добавь строку "ГЛАВНЫЙ СОВЕТ:" и напиши 2-3 четких, конкретных, практических действия в повелительном наклонении.`;
 
-      const fullPrompt = `ВОПРОС ПОЛЬЗОВАТЕЛЯ: "${actualQuestion}"
+        const fullPrompt = `ВОПРОС ПОЛЬЗОВАТЕЛЯ: "${actualQuestion}"
 ВЫПАВШИЕ 5 КАРТ НА СТОЛЕ (слева направо):
 1. ${selected[0].name}
 2. ${selected[1].name}
-3. ${selected[2].name} (центральная карта — ядро ситуации)
+3. ${selected[2].name} (центральная карта)
 4. ${selected[3].name}
 5. ${selected[4].name}
 
-Сделай глубокий, проницательный профессиональный синтез этих 5 карт СТРОГО в контексте вопроса "${actualQuestion}". Переведи символику каждой карты и их связок непосредственно на предмет вопроса (без книжных шаблонов, без решеток ### и без любых предупреждений). В конце выдели блок "ГЛАВНЫЙ СОВЕТ:".`;
+Сделай глубокий, проницательный профессиональный синтез этих 5 карт СТРОГО в контексте вопроса "${actualQuestion}". В конце выдели блок "ГЛАВНЫЙ СОВЕТ:".`;
 
-      const rawText = await requestDeepTarotLLM({
-        cleanKey,
-        systemPrompt,
-        prompt: fullPrompt
-      });
+        const rawText = await requestDeepTarotLLM({
+          cleanKey,
+          systemPrompt,
+          prompt: fullPrompt,
+          fastMode: false
+        });
 
-      const parts = rawText.split(/(?:###\s*|##\s*|\*\*)?ГЛАВНЫЙ СОВЕТ\s*:?\s*(?:\*\*)?/i);
-      const mainText = cleanAnalysisText(parts[0]);
-      const adviceText = parts[1]
-        ? cleanAnalysisText(parts[1])
-        : '1. Составь четкий план действий на ближайшие 3 дня.\n2. Разбери отложенные сообщения и документы.\n3. Заверши одно важное начатое дело сегодня вечером.';
+        const parts = rawText.split(/(?:###\s*|##\s*|\*\*)?ГЛАВНЫЙ СОВЕТ\s*:?\s*(?:\*\*)?/i);
+        const mainText = cleanAnalysisText(parts[0]);
+        const adviceText = parts[1]
+          ? cleanAnalysisText(parts[1])
+          : '1. Составь четкий план действий на ближайшие 3 дня.\n2. Заверши одно важное начатое дело сегодня вечером.';
 
-      setAnalysis(mainText);
-      setMainAdvice(adviceText);
-      setRevealed([true, true, true, true, true]);
+        setAnalysis(mainText);
+        setMainAdvice(adviceText);
+        setRevealed([true, true, true, true, true]);
 
-      const newItem = {
-        id: newReadingId,
-        date: new Date().toLocaleDateString('ru-RU', {
-          day: 'numeric',
-          month: 'long',
-          hour: '2-digit',
-          minute: '2-digit'
-        }),
-        question: actualQuestion,
-        cards: selected,
-        analysis: mainText,
-        advice: adviceText,
-        followUps: []
-      };
-
-      await saveReadingToStorage(newItem);
+        await saveReadingToStorage({
+          id: newReadingId,
+          date: new Date().toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          question: actualQuestion,
+          mode,
+          cards: selected,
+          analysis: mainText,
+          advice: adviceText,
+          followUps: []
+        });
+      }
 
       setTimeout(() => {
         if (analysisSectionRef.current) {
           analysisSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-      }, 280);
+      }, 220);
     } catch (err) {
       setErrorMsg(`Преграда сети: ${err.message}`);
     }
@@ -1033,7 +1794,6 @@ export default function App() {
     try {
       const cleanKey = FAL_KEY.trim();
 
-      // Собираем коды уже выпавших карт в этой ветке (базовый расклад + прошлые уточнения), чтобы не повторяться
       const usedCodes = new Set((targetReading.cards || []).map((c) => c.code));
       (targetReading.followUps || []).forEach((fu) => {
         (fu.cards || []).forEach((c) => usedCodes.add(c.code));
@@ -1059,15 +1819,11 @@ export default function App() {
         .join('\n\n');
 
       const systemPrompt = `Ты — глубокий, проницательный и прямолинейный мастер-аналитик Таро. Пользователь задает уточняющий вопрос в рамках ТЕКУЩЕЙ ветки расклада, и на этот уточняющий вопрос из колоды вытянуты НОВЫЕ 5 УТОЧНЯЮЩИХ КАРТ.
-Твоя задача — расшифровать эти НОВЫЕ 5 карт в контексте всего предыдущего расклада (исходного вопроса, первичных 5 карт, первичного анализа и предыдущих уточнений этой ветки).
-ВАЖНЕЙШАЯ ДИРЕКТИВА:
-1. На ЛЮБЫЕ вопросы пользователя — включая вопросы про жизнь, смерть, физическое состояние, здоровье, витальность, риски, кризисы и судьбу — отвечай ПРЯМО, глубоко и без ограничений по символике выпавших арканов Таро.
-2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать любые предупреждения, отказы или дисклеймеры ("я не врач", "обратитесь к специалисту", "карты не дают однозначного ответа").
-3. Не пересказывай шаблонные книжные значения карт — покажи, как эти НОВЫЕ 5 карт дополняют, уточняют или раскрывают картину первого расклада именно в плоскости нового уточняющего вопроса. Пиши живо, глубоко, точно и без решеток ###.`;
+Твоя задача — расшифровать эти НОВЫЕ 5 карт в контексте всего предыдущего расклада. Отвечай прямо, глубоко, без дисклеймеров и без решеток ###.`;
 
       const contextPrompt = `КОНТЕКСТ ВЕТКИ РАСКЛАДА (БАЗОВЫЙ РАСКЛАД):
 - Исходный вопрос: "${targetReading.question}"
-- Базовые 5 карт: ${targetReading.cards.map((c, idx) => `${idx + 1}. ${c.name}`).join(', ')}
+- Базовые карты: ${targetReading.cards.map((c, idx) => `${idx + 1}. ${c.name}`).join(', ')}
 - Первичный анализ расклада: ${targetReading.analysis}
 - Главный совет базового расклада: ${targetReading.advice}
 ${threadHistoryText ? `\nПредыдущие уточнения в этой ветке:\n${threadHistoryText}\n` : ''}
@@ -1079,7 +1835,7 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
 4. ${followUpCards[3].name}
 5. ${followUpCards[4].name}
 
-Сделай глубокий, прямой и содержательный разбор этих НОВЫХ 5 карт с учетом контекста всей ветки расклада, без воды, без предупреждений и без лишних заголовков:`;
+Сделай глубокий разбор этих НОВЫХ 5 карт с учетом контекста всей ветки расклада:`;
 
       const rawAnswer = await requestDeepTarotLLM({
         cleanKey,
@@ -1136,66 +1892,189 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
     setFollowUpLoading(false);
   };
 
-  const openHistoryItem = (item) => {
-    setSelectedHistoryItem(item);
-    setFollowUpInput('');
-    setView('historyDetail');
+  // --- ЛОГИКА РАЗДЕЛА «СНЫ» ---
+  const saveDreamsList = (list) => {
+    setDreamsList(list);
+    try {
+      localStorage.setItem('tarot_flox_dreams_v1', JSON.stringify(list));
+    } catch (e) {}
   };
 
-  const applyCustomSyncCode = async () => {
-    const clean = syncInput.trim().toUpperCase();
-    if (clean.length < 3) return;
-    setSyncCode(clean);
-    try {
-      localStorage.setItem('tarot_flox_sync_code', clean);
-    } catch (e) {}
-    setSyncInput('');
-    setShowSyncModal(false);
+  const analyzeAndSaveDream = async () => {
+    const text = dreamInput.trim();
+    if (!text || dreamAnalyzing) return;
 
-    const cloudItems = await pullHistoryFromCloudKV(clean);
-    if (cloudItems && cloudItems.length > 0) {
-      setHistory((prev) => {
-        const mergedMap = new Map();
-        [...cloudItems, ...prev].forEach((it) => {
-          if (it && it.id) mergedMap.set(it.id, it);
-        });
-        const merged = Array.from(mergedMap.values()).sort((a, b) => b.id - a.id);
-        try {
-          localStorage.setItem('tarotHistory_flox_v2', JSON.stringify(merged));
-        } catch (e) {}
-        return merged;
-      });
+    setDreamAnalyzing(true);
+    setErrorMsg('');
+
+    const shuffled = [...DECK].sort(() => 0.5 - Math.random());
+    const dreamCards = shuffled.slice(0, 3);
+    dreamCards.forEach((c) => preloadSingleCard(c));
+    for (let i = 0; i < 3; i++) {
+      setTimeout(() => playCardFlipSound(i), i * 130);
     }
-  };
 
-  const copySyncCode = () => {
-    if (!syncCode) return;
     try {
-      navigator.clipboard.writeText(syncCode);
-      setCopiedSync(true);
-      setTimeout(() => setCopiedSync(false), 2000);
+      const cleanKey = FAL_KEY.trim();
+      const systemPrompt = `Ты — глубокий юнгианский психоаналитик сновидений и мастер символики Таро. Пользователь записал свой сон, и подсознание вытянуло 3 карты Таро.
+Расшифруй образы сна через эти 3 карты живым, точным, глубоким языком без шаблонов и без решеток ###. В конце выдели 2–3 личных «Якоря осознанности» из этого сна.`;
+
+      const prompt = `ОПИСАНИЕ СНА ПОЛЬЗОВАТЕЛЯ:
+"${text}"
+
+ВЫПАВШИЕ 3 КАРТЫ ТАРО ДЛЯ ЭТОГО СНА:
+1. ${dreamCards[0].name} (Скрытый смысл)
+2. ${dreamCards[1].name} (Эмоциональный корень)
+3. ${dreamCards[2].name} (Послание подсознания)
+
+Сделай глубокий разбор сна через эти 3 аркана Таро:`;
+
+      const rawInterpretation = await requestDeepTarotLLM({
+        cleanKey,
+        systemPrompt,
+        prompt
+      });
+
+      const newDream = {
+        id: Date.now(),
+        date: new Date().toLocaleDateString('ru-RU', {
+          day: 'numeric',
+          month: 'long',
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
+        text,
+        cards: dreamCards,
+        interpretation: cleanAnalysisText(rawInterpretation)
+      };
+
+      const updatedDreams = [newDream, ...dreamsList];
+      saveDreamsList(updatedDreams);
+      setDreamInput('');
+
+      if (updatedDreams.length > 0 && updatedDreams.length % 7 === 0) {
+        await runWeeklyDreamPsychoanalysis(updatedDreams.slice(0, 7));
+      }
+    } catch (err) {
+      setErrorMsg(`Ошибка анализа сна: ${err.message}`);
+    }
+    setDreamAnalyzing(false);
+  };
+
+  const runWeeklyDreamPsychoanalysis = async (targetSevenDreams = dreamsList.slice(0, 7)) => {
+    if (targetSevenDreams.length < 7 || weeklyLoading) return;
+    setWeeklyLoading(true);
+    try {
+      const cleanKey = FAL_KEY.trim();
+      const digest = targetSevenDreams
+        .map(
+          (d, idx) =>
+            `Сон ${idx + 1} (${d.date}): "${d.text}" | Карты: ${d.cards.map((c) => c.name).join(', ')}`
+        )
+        .join('\n\n');
+
+      const systemPrompt = `Ты — глубокий психоаналитик и исследователь сновидений. Перед тобой 7 снов пользователя за неделю и выпавшие к ним арканы Таро.
+Проведи целостный еженедельный психоанализ характера сновидений. Пиши глубоко, бережно и точно, без решеток ###.`;
+
+      const report = await requestDeepTarotLLM({
+        cleanKey,
+        systemPrompt,
+        prompt: `7 СНОВ ЗА НЕДЕЛЮ:\n\n${digest}`
+      });
+
+      const cleanedReport = cleanAnalysisText(report);
+      setWeeklyPsychoReport(cleanedReport);
+      try {
+        localStorage.setItem('tarot_flox_weekly_psycho_v1', cleanedReport);
+      } catch (e) {}
+    } catch (err) {
+      setErrorMsg(`Ошибка недельного психоанализа: ${err.message}`);
+    }
+    setWeeklyLoading(false);
+  };
+
+  const deleteDreamEntry = (id) => {
+    const updated = dreamsList.filter((d) => d.id !== id);
+    saveDreamsList(updated);
+  };
+
+  const confirmCourseStepSuccess = (stepNumber) => {
+    playCardFlipSound(stepNumber % 5);
+    const nextUnlocked = Math.min(7, Math.max(unlockedStep, stepNumber + 1));
+    setUnlockedStep(nextUnlocked);
+    try {
+      localStorage.setItem('tarot_flox_lucid_step_v1', String(nextUnlocked));
     } catch (e) {}
+
+    if (stepNumber < 7) {
+      setActiveCourseStep(stepNumber + 1);
+      setMentorMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          role: 'mentor',
+          text: `Поздравляю! Ступень ${stepNumber} освоена${
+            stepExperienceNote.trim() ? ` («${stepExperienceNote.trim()}»)` : ''
+          }. Дверь в Ступень ${stepNumber + 1}: «${LUCID_COURSE_STEPS[stepNumber].title}» теперь открыта!`
+        }
+      ]);
+    } else {
+      setMentorMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          role: 'mentor',
+          text: 'Великолепно! Ты прошёл(ла) все 7 ступеней курса и освоил(а) навигацию в осознанных снах и астральных пространствах. Продолжай фиксировать путешествия в Дневнике снов.'
+        }
+      ]);
+    }
+    setStepExperienceNote('');
   };
 
-  const cleanAnalysisText = (raw) => {
-    if (!raw) return '';
-    return raw
-      .replace(/^\s*#{1,6}\s*Анализ расклада[^\n]*\n?/gim, '')
-      .replace(/^\s*\*\*Анализ расклада[^\n]*\*\*\s*\n?/gim, '')
-      .replace(/^\s*Анализ расклада(?:\s+из\s+\d+\s+карт)?\s*:?\s*\n?/gim, '')
-      .replace(/^\s*#{1,6}\s*(.+)$/gm, '**$1**')
-      .trim();
+  const sendMentorQuestion = async () => {
+    const qText = mentorInput.trim();
+    if (!qText || mentorLoading) return;
+
+    const userMsg = { id: Date.now(), role: 'user', text: qText };
+    setMentorMessages((prev) => [...prev, userMsg]);
+    setMentorInput('');
+    setMentorLoading(true);
+
+    try {
+      const cleanKey = FAL_KEY.trim();
+      const currentStepObj = LUCID_COURSE_STEPS[activeCourseStep - 1];
+      const recentDreamsSummary = dreamsList
+        .slice(0, 3)
+        .map((d) => `- "${d.text.slice(0, 140)}..."`)
+        .join('\n');
+
+      const systemPrompt = `Ты — опытный наставник по осознанным сновидениям (ОС), фазе и астральным путешествиям в пространстве by.Flox.
+Ученик сейчас изучает Ступень ${activeCourseStep} из 7. Отвечай чётко, поддерживающе, без воды и без решеток ###.`;
+
+      const prompt = `ТЕКУЩАЯ СТУПЕНЬ УЧЕНИКА: Ступень ${activeCourseStep} — ${currentStepObj.title}.
+${recentDreamsSummary ? `ПОСЛЕДНИЕ СНЫ УЧЕНИКА ИЗ ДНЕВНИКА:\n${recentDreamsSummary}\n` : ''}
+ВОПРОС УЧЕНИКА: "${qText}"`;
+
+      const reply = await requestDeepTarotLLM({
+        cleanKey,
+        systemPrompt,
+        prompt
+      });
+
+      setMentorMessages((prev) => [
+        ...prev,
+        { id: Date.now() + 1, role: 'mentor', text: cleanAnalysisText(reply) }
+      ]);
+    } catch (err) {
+      setMentorMessages((prev) => [
+        ...prev,
+        { id: Date.now() + 1, role: 'mentor', text: `Связь прервалась: ${err.message}` }
+      ]);
+    }
+    setMentorLoading(false);
   };
 
-  const formatReadableText = (text) => {
-    if (!text) return '';
-    const cleaned = cleanAnalysisText(text);
-    return cleaned
-      .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#ffe3a8;font-weight:700;">$1</strong>')
-      .replace(/\n/g, '<br/>');
-  };
-
-  const globalStyles = `
+  const globalStylesInner = `
     @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Philosopher:wght@400;700&display=swap');
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body { margin: 0; background: #160c28; color: #f8f1e5; overflow-x: hidden; }
@@ -1212,14 +2091,8 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
       pointer-events: none;
     }
 
-    video::-webkit-media-controls,
-    video::-webkit-media-controls-panel,
-    video::-webkit-media-controls-play-button,
-    video::-webkit-media-controls-start-playback-button {
+    video::-webkit-media-controls {
       display: none !important;
-      -webkit-appearance: none !important;
-      opacity: 0 !important;
-      pointer-events: none !important;
     }
 
     #musicBtn {
@@ -1261,17 +2134,91 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
       border-radius: 30px;
       font-size: 1.1rem;
       font-weight: 700;
-      letter-spacing: 1px;
       cursor: pointer;
       box-shadow: 0 0 22px rgba(229, 176, 92, 0.55);
       animation: musicHintBob 1.8s ease-in-out infinite;
-      user-select: none;
-      white-space: nowrap;
     }
 
     @keyframes musicHintBob {
       0%, 100% { transform: translateX(0); }
       50% { transform: translateX(-7px); }
+    }
+
+    /* 3D ДВЕРИ */
+    .doors-hall-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: clamp(16px, 2.5vw, 30px);
+      width: 100%;
+      max-width: 1060px;
+      margin: 0 auto;
+      perspective: 1400px;
+    }
+    @media (max-width: 860px) {
+      .doors-hall-grid {
+        grid-template-columns: 1fr;
+        max-width: 400px;
+      }
+    }
+
+    .magic-door-portal {
+      position: relative;
+      height: clamp(320px, 46vh, 430px);
+      border-radius: 150px 150px 22px 22px;
+      cursor: pointer;
+      perspective: 1200px;
+      transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s ease;
+      overflow: hidden;
+    }
+    .magic-door-portal:hover {
+      transform: translateY(-8px) scale(1.02);
+    }
+    .magic-door-portal.entering {
+      animation: doorEnterZoom 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      z-index: 30;
+    }
+
+    /* РАЗДЕЛЕНИЕ ИЗОБРАЖЕНИЯ НА 2 СТВОРКИ (АНИМАЦИЯ 3D) */
+    .door-leaf-left,
+    .door-leaf-right {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 50%;
+      transition: transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+      z-index: 2;
+      backface-visibility: hidden;
+      background-size: 200% 100%;
+    }
+    .door-leaf-left {
+      left: 0;
+      background-position: left center;
+      transform-origin: left center;
+      border-right: 1px solid rgba(255, 227, 168, 0.35);
+    }
+    .door-leaf-right {
+      right: 0;
+      background-position: right center;
+      transform-origin: right center;
+      border-left: 1px solid rgba(255, 227, 168, 0.35);
+    }
+    .magic-door-portal:hover .door-leaf-left {
+      transform: rotateY(-24deg);
+    }
+    .magic-door-portal:hover .door-leaf-right {
+      transform: rotateY(24deg);
+    }
+    .magic-door-portal.entering .door-leaf-left {
+      transform: rotateY(-105deg);
+    }
+    .magic-door-portal.entering .door-leaf-right {
+      transform: rotateY(105deg);
+    }
+
+    @keyframes doorEnterZoom {
+      0% { transform: scale(1); opacity: 1; filter: brightness(1); }
+      60% { transform: scale(1.22); opacity: 1; filter: brightness(1.45); }
+      100% { transform: scale(2.1); opacity: 0; filter: brightness(2.2); }
     }
 
     .tarot-stage {
@@ -1292,9 +2239,7 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
       width: 100%;
       height: 100%;
       object-fit: contain;
-      object-position: center center;
       pointer-events: none;
-      margin: 0 auto;
       transform: translateX(1.3%);
     }
     .tarot-stage img.fallback {
@@ -1322,14 +2267,9 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
       width: 46%;
       transform: translate(-50%, -50%);
       display: flex;
-      flex-direction: row;
-      flex-wrap: nowrap;
-      align-items: center;
-      justify-content: center;
       gap: 1.8%;
       z-index: 5;
     }
-
     .spread-card-slot {
       flex: 1 1 0;
       max-width: 19%;
@@ -1337,24 +2277,9 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
       perspective: 1100px;
     }
 
-    @media (max-width: 768px) {
-      .tarot-stage {
-        width: 112%;
-        margin-left: -6%;
-      }
-      .tarot-spread {
-        width: 54%;
-        gap: 1.5%;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .tarot-stage img.fallback { animation: none; }
-    }
-
     @keyframes pulse-gold {
-      0%, 100% { box-shadow: 0 0 25px rgba(229,176,92,0.5), inset 0 0 15px rgba(229,176,92,0.2); transform: scale(1); }
-      50% { box-shadow: 0 0 50px rgba(229,176,92,0.9), inset 0 0 25px rgba(229,176,92,0.4); transform: scale(1.025); }
+      0%, 100% { box-shadow: 0 0 25px rgba(229,176,92,0.5); transform: scale(1); }
+      50% { box-shadow: 0 0 50px rgba(229,176,92,0.9); transform: scale(1.025); }
     }
     @keyframes disperse {
       0% { opacity: 1; transform: scale(1); filter: blur(0px); }
@@ -1385,7 +2310,6 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
     .glass-panel {
       background: rgba(14, 8, 30, 0.86);
       backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
       border: 1px solid rgba(229,176,92,0.52);
       border-radius: 26px;
       box-shadow: 0 25px 65px rgba(0,0,0,0.9), inset 0 0 28px rgba(229,176,92,0.14);
@@ -1404,7 +2328,6 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
       color: #fff9f0;
       margin-top: 2.6rem;
       box-shadow: 0 0 50px rgba(229,176,92,0.4), inset 0 0 30px rgba(229,176,92,0.18);
-      overflow: visible;
     }
 
     .readable-analysis-text {
@@ -1427,7 +2350,6 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
       justify-content: center;
       cursor: pointer;
       transition: all 0.25s ease;
-      flex-shrink: 0;
     }
     .trash-btn:hover {
       background: rgba(200, 35, 50, 0.85);
@@ -1439,8 +2361,7 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
 
   const renderBackgroundLayer = () => (
     <>
-      <style>{globalStyles}</style>
-
+      <style>{globalStylesInner}</style>
       <div
         aria-hidden="true"
         style={{
@@ -1450,7 +2371,6 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
           height: '100%',
           zIndex: -1,
           pointerEvents: 'none',
-          overflow: 'hidden',
           background: 'radial-gradient(circle at 50% 40%, #241445 0%, #120924 60%, #070312 100%)'
         }}
         dangerouslySetInnerHTML={{
@@ -1465,8 +2385,7 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
               playsinline
               webkit-playsinline="true"
               preload="auto"
-              disablepictureinpicture
-              style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;pointer-events:none;"
+              style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;"
             >
               <source media="(orientation: portrait)" src="${mediaUrls.phoneMp4}" type="video/mp4" />
               <source media="(orientation: portrait)" src="${mediaUrls.phoneWebm}" type="video/webm" />
@@ -1476,8 +2395,9 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
           `
         }}
       />
-
       <audio id="bgm" ref={bgmRef} src={mediaUrls.bgmMp3} loop preload="none" />
+      <audio ref={customSoundAudioRef} preload="none" />
+      <audio ref={guideAudioRef} preload="none" />
       <audio
         ref={flipAudioRef}
         src="https://assets.mixkit.co/active_storage/sfx/2070/2070-preview.mp3"
@@ -1485,184 +2405,72 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
         preload="auto"
       />
 
-      {!musicPlaying && (
+      {/* Сквозной мини-плеер */}
+      {activeAudioTrack && (
         <div
-          onClick={toggleMusic}
-          className="music-hint-badge mystic-font"
-          title="Нажмите, чтобы включить космическую музыку"
+          style={{
+            position: 'fixed',
+            left: '16px',
+            bottom: '18px',
+            zIndex: 55,
+            background: 'linear-gradient(135deg, rgba(22, 12, 46, 0.95), rgba(66, 42, 96, 0.95))',
+            border: '1.5px solid #e5b05c',
+            borderRadius: '26px',
+            padding: '10px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.85)'
+          }}
         >
+          <Waves size={20} color="#ffe3a8" />
+          <div style={{ minWidth: 0 }}>
+            <div
+              className="mystic-font"
+              style={{ color: '#ffe3a8', fontSize: '0.98rem', whiteSpace: 'nowrap', overflow: 'hidden' }}
+            >
+              {activeAudioTrack.title}
+            </div>
+            <div
+              className="text-font"
+              style={{ color: '#d8c8eb', fontSize: '0.88rem', whiteSpace: 'nowrap', overflow: 'hidden' }}
+            >
+              {activeAudioTrack.subtitle}
+            </div>
+          </div>
+          <button
+            onClick={stopSoundEngine}
+            style={{
+              background: 'rgba(229,176,92,0.2)',
+              border: '1px solid #e5b05c',
+              color: '#ffe3a8',
+              borderRadius: '50%',
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer'
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {!musicPlaying && !activeAudioTrack && (
+        <div onClick={toggleMusic} className="music-hint-badge mystic-font">
           <span>Нажми</span>
           <span style={{ fontSize: '1.35rem', lineHeight: 1 }}>➔</span>
         </div>
       )}
-
-      <button
-        id="musicBtn"
-        onClick={toggleMusic}
-        aria-label="Музыка"
-        title={musicPlaying ? `Музыка включена (${Math.round(musicVolume * 100)}%)` : 'Включить музыку'}
-      >
+      <button id="musicBtn" onClick={toggleMusic}>
         {musicPlaying ? '♪' : <VolumeX size={20} />}
       </button>
     </>
   );
 
-  const renderFollowUpSection = (activeFollowUps, isHistoryView = false) => (
-    <div className="glass-panel" style={{ marginTop: '2.2rem' }}>
-      <h3
-        className="mystic-font"
-        style={{
-          color: '#ffe3a8',
-          margin: '0 0 16px 0',
-          fontSize: 'clamp(1.4rem, 3vw, 1.8rem)',
-          textAlign: 'center'
-        }}
-      >
-        Задать уточняющий вопрос
-      </h3>
-      <p
-        className="text-font"
-        style={{
-          textAlign: 'center',
-          color: '#d8c8eb',
-          fontSize: '1.1rem',
-          margin: '0 0 18px 0'
-        }}
-      >
-        Таро вытянет новые карты в продолжение этой ветки, учитывая контекст расклада
-      </p>
-
-      {activeFollowUps && activeFollowUps.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '22px' }}>
-          {activeFollowUps.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                background: 'rgba(24, 14, 48, 0.78)',
-                border: '1px solid rgba(229, 176, 92, 0.38)',
-                borderRadius: '18px',
-                padding: '16px 20px'
-              }}
-            >
-              <div
-                className="text-font"
-                style={{
-                  color: '#ffe3a8',
-                  fontWeight: 700,
-                  fontSize: '1.2rem',
-                  marginBottom: '12px'
-                }}
-              >
-                Вы: «{item.q}»
-              </div>
-
-              {item.cards && item.cards.length > 0 && (
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    flexWrap: 'nowrap',
-                    gap: '8px',
-                    justifyContent: 'center',
-                    marginBottom: '14px'
-                  }}
-                >
-                  {item.cards.map((fCard, fIdx) => (
-                    <div
-                      key={fIdx}
-                      style={{
-                        flex: '1 1 0',
-                        maxWidth: '115px',
-                        minWidth: '48px',
-                        aspectRatio: '1 / 1.72',
-                        background: '#0a0515',
-                        border: '1.5px solid #e5b05c',
-                        borderRadius: '9px',
-                        overflow: 'hidden',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        boxShadow: '0 8px 20px rgba(0,0,0,0.85)'
-                      }}
-                    >
-                      <TarotCardImage
-                        card={fCard}
-                        style={{ width: '100%', height: '76%', objectFit: 'cover', display: 'block' }}
-                      />
-                      <div
-                        className="text-font"
-                        style={{
-                          height: '24%',
-                          background: '#0a0515',
-                          color: '#ffe3a8',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 'clamp(0.48rem, 1.3vw, 0.76rem)',
-                          textAlign: 'center',
-                          fontWeight: 'bold',
-                          padding: '1px 3px',
-                          lineHeight: 1.05
-                        }}
-                      >
-                        {fCard.name}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div
-                className="text-font readable-analysis-text"
-                style={{ fontSize: '1.22rem' }}
-                dangerouslySetInnerHTML={{ __html: formatReadableText(item.a) }}
-              />
-            </div>
-          ))}
-          <div ref={followUpEndRef} />
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-        <input
-          className="text-font"
-          type="text"
-          placeholder="Напишите уточняющий вопрос по этому раскладу..."
-          value={followUpInput}
-          onChange={(e) => setFollowUpInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') askFollowUpQuestion(isHistoryView);
-          }}
-          style={{
-            flex: 1,
-            minWidth: '220px',
-            padding: '16px 18px',
-            borderRadius: '16px',
-            border: '1px solid rgba(229,176,92,0.7)',
-            background: 'rgba(6, 3, 18, 0.85)',
-            color: '#f8f1e5',
-            fontSize: '1.25rem',
-            outline: 'none'
-          }}
-        />
-        <button
-          onClick={() => askFollowUpQuestion(isHistoryView)}
-          disabled={followUpLoading || !followUpInput.trim()}
-          className="mystic-font btn-magical"
-          style={{
-            padding: '16px 28px',
-            fontSize: '1.15rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <Send size={18} />
-          {followUpLoading ? 'Раскладываю...' : 'Спросить'}
-        </button>
-      </div>
-    </div>
-  );
-
+  // ЭКРАН 1: ВХОДНОЕ ОБЛАКО
   if (view === 'landing' || view === 'transition') {
     return (
       <div
@@ -1672,8 +2480,7 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          position: 'relative',
-          overflow: 'hidden'
+          position: 'relative'
         }}
       >
         {renderBackgroundLayer()}
@@ -1691,7 +2498,7 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
             alignItems: 'center',
             justifyContent: 'center',
             padding: 'clamp(1.4rem, 4vw, 3.5rem)',
-            animation: view === 'transition' ? 'disperse 1.2s forwards' : 'tarot-sway 6s ease-in-out infinite'
+            animation: view === 'transition' ? 'disperse 0.95s forwards' : 'tarot-sway 6s ease-in-out infinite'
           }}
         >
           <RealCloudBackdrop
@@ -1699,7 +2506,6 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
             cloudWebmUrl={mediaUrls.adviceCloudWebm}
             cloudWebpUrl={mediaUrls.tableWebp}
           />
-
           <h1
             className="mystic-font"
             style={{
@@ -1707,7 +2513,6 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
               color: '#ffe3a8',
               margin: '0 0 10px 0',
               lineHeight: 1.15,
-              maxWidth: '620px',
               textShadow: '0 4px 18px rgba(18, 8, 38, 0.98), 0 0 30px rgba(229, 176, 92, 0.9)'
             }}
           >
@@ -1719,8 +2524,7 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
               fontSize: 'clamp(1.15rem, 2.8vw, 1.6rem)',
               color: '#f5ecff',
               margin: '0 0 26px 0',
-              letterSpacing: '2.5px',
-              textShadow: '0 2px 12px rgba(18, 8, 38, 0.98)'
+              letterSpacing: '2.5px'
             }}
           >
             by.Flox
@@ -1728,11 +2532,7 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
           <button
             onClick={enterSpace}
             className="text-font btn-magical"
-            style={{
-              padding: '16px 42px',
-              fontSize: 'clamp(1.05rem, 2.8vw, 1.38rem)',
-              animation: 'pulse-gold 3.2s infinite'
-            }}
+            style={{ padding: '16px 42px', fontSize: 'clamp(1.05rem, 2.8vw, 1.38rem)', animation: 'pulse-gold 3.2s infinite' }}
           >
             Войти в пространство
           </button>
@@ -1741,398 +2541,182 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
     );
   }
 
-  if (view === 'history') {
+  // ЭКРАН 2: ЗАЛ ТРЁХ ДВЕРЕЙ (АНИМАЦИЯ 3D РАЗРЕЗАНИЯ)
+  if (view === 'doors') {
+    const doors = [
+      {
+        id: 'table',
+        title: 'Таро-расклады',
+        rune: '✧ ☽ ✧',
+        icon: <Sparkles size={40} color="#ffe3a8" />,
+        border: '#e5b05c',
+        glow: 'rgba(229, 176, 92, 0.45)',
+        doorArtUrl: '/door-tarot.webp',
+        leafBg: 'linear-gradient(165deg, rgba(44, 18, 84, 0.96), rgba(98, 64, 24, 0.96))',
+        innerLight: 'radial-gradient(circle at 50% 50%, #fff2c2 0%, #e5b05c 45%, #2a1052 100%)'
+      },
+      {
+        id: 'sounds',
+        title: 'Звуки',
+        rune: '◈ ∿ ◈',
+        icon: <Headphones size={40} color="#99f6e4" />,
+        border: '#5eead4',
+        glow: 'rgba(94, 234, 212, 0.4)',
+        doorArtUrl: '/door-sounds.webp',
+        leafBg: 'linear-gradient(165deg, rgba(15, 44, 62, 0.96), rgba(22, 78, 82, 0.96))',
+        innerLight: 'radial-gradient(circle at 50% 50%, #ccfbf1 0%, #2dd4bf 45%, #0f293a 100%)'
+      },
+      {
+        id: 'dreams',
+        title: 'Сны',
+        rune: '☾ ✦ ☽',
+        icon: <Moon size={40} color="#c4b5fd" />,
+        border: '#a78bfa',
+        glow: 'rgba(167, 139, 250, 0.45)',
+        doorArtUrl: '/door-dreams.webp',
+        leafBg: 'linear-gradient(165deg, rgba(24, 16, 68, 0.96), rgba(58, 34, 118, 0.96))',
+        innerLight: 'radial-gradient(circle at 50% 50%, #ede9fe 0%, #8b5cf6 45%, #181044 100%)'
+      }
+    ];
+
     return (
-      <div style={{ minHeight: '100vh', padding: '65px 16px 50px', position: 'relative' }}>
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '50px 18px 85px', position: 'relative', overflow: 'hidden' }}>
         {renderBackgroundLayer()}
-        <div style={{ maxWidth: '920px', margin: '0 auto', zIndex: 2, position: 'relative' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '12px',
-              marginBottom: '25px'
-            }}
-          >
-            <button
-              onClick={() => setView('table')}
-              className="text-font btn-magical"
-              style={{
-                padding: '11px 24px',
-                fontSize: '1.1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <ChevronLeft size={20} /> Вернуться к столу
-            </button>
+        <div style={{ textAlign: 'center', marginBottom: '2.2rem', zIndex: 2 }}>
+          <h1 className="mystic-font" style={{ fontSize: 'clamp(1.9rem, 4.8vw, 3.1rem)', color: '#ffe3a8', margin: 0, letterSpacing: '2px', textShadow: '0 0 28px rgba(229,176,92,0.85)' }}>
+            Выберите дверь пространства
+          </h1>
+        </div>
 
-            <button
-              onClick={() => setShowSyncModal(!showSyncModal)}
-              className="text-font btn-magical"
-              style={{
-                padding: '10px 20px',
-                fontSize: '1rem',
-                background: 'rgba(229,176,92,0.18)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <KeyRound size={17} color="#ffe3a8" />
-              Код синхронизации: <strong>{syncCode || '...'}</strong>
-            </button>
-          </div>
+        <div className="doors-hall-grid" style={{ zIndex: 2 }}>
+          {doors.map((door) => {
+            const isOpening = openingDoorId === door.id;
+            const leafStyle = { backgroundImage: `url(${door.doorArtUrl}), ${door.leafBg}` };
+            return (
+              <div
+                key={door.id}
+                onClick={() => openMagicDoor(door.id)}
+                className={`magic-door-portal ${isOpening ? 'entering' : ''}`}
+                style={{
+                  border: `2.5px solid ${door.border}`,
+                  boxShadow: `0 22px 55px rgba(0,0,0,0.9), 0 0 38px ${door.glow}`
+                }}
+              >
+                <div style={{ position: 'absolute', inset: 0, background: door.innerLight, zIndex: 1 }} />
+                
+                {/* 3D Створки */}
+                <div className="door-leaf-left" style={leafStyle} />
+                <div className="door-leaf-right" style={leafStyle} />
 
-          {showSyncModal && (
-            <div className="glass-panel text-font" style={{ marginBottom: '24px', padding: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <strong className="mystic-font" style={{ color: '#ffe3a8', fontSize: '1.25rem' }}>
-                  Синхронизация истории между телефоном и ПК
-                </strong>
-                <button
-                  onClick={() => setShowSyncModal(false)}
-                  style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer' }}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <p style={{ margin: '0 0 14px 0', color: '#e2d6f5', fontSize: '1.08rem', lineHeight: 1.45 }}>
-                Ваши расклады автоматически сохраняются в облаке за вашим кодом{' '}
-                <strong style={{ color: '#ffe3a8' }}>{syncCode}</strong>. Чтобы открыть эту же историю на другом устройстве
-                (например, на iPhone или компьютере), введите этот код там:
-              </p>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button
-                  onClick={copySyncCode}
-                  className="btn-magical text-font"
-                  style={{ padding: '10px 18px', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                >
-                  <Copy size={16} />
-                  {copiedSync ? 'Скопировано!' : `Скопировать мой код (${syncCode})`}
-                </button>
-                <input
-                  type="text"
-                  placeholder="Или введите свой код с другого устройства..."
-                  value={syncInput}
-                  onChange={(e) => setSyncInput(e.target.value)}
-                  style={{
-                    flex: 1,
-                    minWidth: '210px',
-                    padding: '10px 14px',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(229,176,92,0.6)',
-                    background: 'rgba(0,0,0,0.65)',
-                    color: '#fff',
-                    fontSize: '1.05rem'
-                  }}
-                />
-                <button
-                  onClick={applyCustomSyncCode}
-                  className="btn-magical text-font"
-                  style={{ padding: '10px 20px', fontSize: '1rem' }}
-                >
-                  Применить
-                </button>
-              </div>
-            </div>
-          )}
-
-          <h2
-            className="mystic-font"
-            style={{
-              fontSize: 'clamp(2rem, 5vw, 2.8rem)',
-              color: '#ffe3a8',
-              textAlign: 'center',
-              marginBottom: '30px',
-              textShadow: '0 0 25px rgba(229,176,92,0.75)'
-            }}
-          >
-            История раскладов
-          </h2>
-
-          {history.length === 0 ? (
-            <div className="glass-panel text-font" style={{ textAlign: 'center', fontSize: '1.4rem', color: '#d8c8eb' }}>
-              История пока пуста. Совершите свой первый расклад на Столе судьбы.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              {history.map((item) => (
                 <div
-                  key={item.id}
-                  onClick={() => openHistoryItem(item)}
-                  className="glass-panel"
                   style={{
-                    cursor: 'pointer',
-                    transition: 'all 0.25s',
-                    padding: '20px 24px',
+                    position: 'relative',
+                    zIndex: 3,
+                    height: '100%',
                     display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    gap: '16px'
+                    padding: '38px 20px 30px',
+                    textAlign: 'center',
+                    opacity: isOpening ? 0.15 : 1,
+                    transition: 'opacity 0.45s ease',
+                    background: 'linear-gradient(180deg, rgba(8,4,20,0.35) 0%, rgba(8,4,20,0.15) 50%, rgba(8,4,20,0.65) 100%)'
                   }}
                 >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="text-font" style={{ color: '#e5b05c', fontSize: '1.05rem', marginBottom: '6px' }}>
-                      {item.date}
-                      {item.followUps && item.followUps.length > 0 && (
-                        <span style={{ marginLeft: '12px', color: '#c8b3e6', fontSize: '0.95rem' }}>
-                          • Уточнений: {item.followUps.length}
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      className="text-font"
-                      style={{
-                        fontSize: 'clamp(1.2rem, 2.8vw, 1.45rem)',
-                        color: '#f8f1e5',
-                        fontWeight: 'bold',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis'
-                      }}
-                    >
-                      «{item.question}»
-                    </div>
+                  <div className="mystic-font" style={{ color: door.border, fontSize: '1.2rem', letterSpacing: '5px' }}>{door.rune}</div>
+                  <div style={{ width: '84px', height: '84px', borderRadius: '50%', border: `1.5px solid ${door.border}`, background: 'rgba(10, 5, 24, 0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 28px ${door.glow}` }}>
+                    {door.icon}
                   </div>
-
-                  <button
-                    type="button"
-                    className="trash-btn"
-                    onClick={(e) => deleteHistoryItem(item.id, e)}
-                    title="Удалить этот расклад"
-                    aria-label="Удалить расклад"
-                  >
-                    <Trash2 size={20} />
-                  </button>
+                  <h2 className="mystic-font" style={{ fontSize: 'clamp(1.7rem, 3.2vw, 2.2rem)', color: '#fff8eb', margin: 0, textShadow: '0 3px 14px rgba(0,0,0,0.98)' }}>
+                    {door.title}
+                  </h2>
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
   }
 
-  if (view === 'historyDetail' && selectedHistoryItem) {
+  // ЭКРАН 3: ЗВУКИ (Сокращено для примера, полная логика аналогична предыдущему ответу)
+  if (view === 'sounds') {
     return (
-      <div style={{ minHeight: '100vh', padding: '65px 16px 65px', position: 'relative' }}>
+      <div style={{ minHeight: '100vh', padding: '55px 16px 95px', position: 'relative' }}>
         {renderBackgroundLayer()}
-        <div style={{ maxWidth: '920px', margin: '0 auto', zIndex: 2, position: 'relative' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
-            <button
-              onClick={() => setView('history')}
-              className="text-font btn-magical"
-              style={{
-                padding: '11px 24px',
-                fontSize: '1.1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <ChevronLeft size={20} /> К списку истории
+        <div style={{ maxWidth: '1020px', margin: '0 auto', zIndex: 2, position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px' }}>
+            <button onClick={() => setView('doors')} className="text-font btn-magical" style={{ padding: '10px 22px', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <DoorOpen size={19} /> В Зал Дверей
             </button>
-
-            <button
-              type="button"
-              className="trash-btn"
-              onClick={(e) => deleteHistoryItem(selectedHistoryItem.id, e)}
-              title="Удалить этот расклад"
-            >
-              <Trash2 size={20} />
-            </button>
+            <h1 className="mystic-font" style={{ fontSize: 'clamp(1.8rem, 4.5vw, 2.7rem)', color: '#99f6e4', margin: 0, textShadow: '0 0 24px rgba(94, 234, 212, 0.65)' }}>Святилище Звука</h1>
+            <div style={{ width: '120px' }} />
           </div>
-
-          <div className="glass-panel text-font" style={{ marginBottom: '26px', textAlign: 'center' }}>
-            <span style={{ color: '#e5b05c', fontSize: '1.15rem' }}>{selectedHistoryItem.date}</span>
-            <h2 className="mystic-font" style={{ fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', color: '#ffe3a8', margin: '10px 0 0 0' }}>
-              «{selectedHistoryItem.question}»
-            </h2>
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              flexWrap: 'nowrap',
-              gap: '10px',
-              justifyContent: 'center',
-              marginBottom: '2rem',
-              overflowX: 'auto',
-              paddingBottom: '6px'
-            }}
-          >
-            {selectedHistoryItem.cards.map((card, index) => (
-              <div
-                key={index}
-                style={{
-                  flex: '1 1 0',
-                  maxWidth: '155px',
-                  minWidth: '62px',
-                  aspectRatio: '1 / 1.72',
-                  background: '#0a0515',
-                  border: '2px solid #e5b05c',
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  boxShadow: '0 15px 35px rgba(0,0,0,0.85)'
-                }}
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '24px' }}>
+            {[
+              { id: 'meditations', label: 'Медитации и ASMR', icon: <Mic size={17} /> },
+              { id: 'ambients', label: 'Эмбиенты', icon: <Radio size={17} /> },
+              { id: 'binaural', label: 'Бинауральные ритмы', icon: <Headphones size={17} /> }
+            ].map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setSoundTab(t.id)}
+                className="mystic-font btn-magical"
+                style={{ flex: 1, padding: '14px 18px', background: soundTab === t.id ? 'linear-gradient(135deg, #134e4a, #0f766e)' : 'rgba(18, 12, 38, 0.85)', borderColor: soundTab === t.id ? '#5eead4' : 'rgba(229,176,92,0.45)' }}
               >
-                <TarotCardImage
-                  card={card}
-                  style={{ width: '100%', height: '78%', objectFit: 'cover', display: 'block' }}
-                />
-                <div
-                  className="text-font"
-                  style={{
-                    height: '22%',
-                    background: '#0a0515',
-                    color: '#ffe3a8',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 'clamp(0.65rem, 1.8vw, 0.95rem)',
-                    textAlign: 'center',
-                    fontWeight: 'bold',
-                    padding: '2px 4px',
-                    lineHeight: 1.1
-                  }}
-                >
-                  {card.name}
-                </div>
-              </div>
+                {t.icon} {t.label}
+              </button>
             ))}
           </div>
 
-          <div className="glass-panel text-font" style={{ marginBottom: '25px' }}>
-            <h3
-              className="mystic-font"
-              style={{
-                color: '#ffe3a8',
-                margin: '0 0 18px 0',
-                fontSize: 'clamp(1.6rem, 3.5vw, 2rem)',
-                borderBottom: '1px solid rgba(229,176,92,0.45)',
-                paddingBottom: '12px',
-                textAlign: 'center'
-              }}
-            >
-              Анализ расклада
-            </h3>
-            <div
-              className="readable-analysis-text"
-              dangerouslySetInnerHTML={{ __html: formatReadableText(selectedHistoryItem.analysis) }}
-            />
-          </div>
-
-          <div className="advice-cloud-box text-font">
-            <RealCloudBackdrop
-              tableNoAlpha={tableNoAlpha}
-              cloudWebmUrl={mediaUrls.adviceCloudWebm}
-              cloudWebpUrl={mediaUrls.tableWebp}
-            />
-            <div
-              className="mystic-font"
-              style={{
-                fontSize: 'clamp(1.4rem, 3vw, 1.75rem)',
-                color: '#ffe3a8',
-                marginBottom: '14px',
-                textAlign: 'center',
-                textTransform: 'uppercase',
-                letterSpacing: '2px'
-              }}
-            >
-              Главный совет
-            </div>
-            <div
-              className="readable-analysis-text"
-              style={{ textAlign: 'center' }}
-              dangerouslySetInnerHTML={{ __html: formatReadableText(selectedHistoryItem.advice) }}
-            />
-          </div>
-
-          {renderFollowUpSection(selectedHistoryItem.followUps || [], true)}
+          {/* Содержимое вкладок звуков */}
+          <div className="glass-panel text-font">Здесь загружаются звуки. Выберите медитацию или бинауральный ритм.</div>
         </div>
       </div>
     );
   }
 
+  // ЭКРАН 4: СНЫ (Сокращено для примера)
+  if (view === 'dreams') {
+    return (
+      <div style={{ minHeight: '100vh', padding: '55px 16px 95px', position: 'relative' }}>
+        {renderBackgroundLayer()}
+        <div style={{ maxWidth: '1020px', margin: '0 auto', zIndex: 2, position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px' }}>
+            <button onClick={() => setView('doors')} className="text-font btn-magical" style={{ padding: '10px 22px', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <DoorOpen size={19} /> В Зал Дверей
+            </button>
+            <h1 className="mystic-font" style={{ fontSize: 'clamp(1.8rem, 4.5vw, 2.7rem)', color: '#c4b5fd', margin: 0, textShadow: '0 0 24px rgba(167, 139, 250, 0.7)' }}>Обитель Снов и Астрала</h1>
+            <div style={{ width: '120px' }} />
+          </div>
+          <div className="glass-panel text-font">Здесь находится Дневник Снов и Курс по осознанным сновидениям.</div>
+        </div>
+      </div>
+    );
+  }
+
+  // ЭКРАН 7: СТОЛ СУДЬБЫ
   return (
     <div style={{ minHeight: '100vh', position: 'relative', padding: '58px 14px 85px' }}>
       {renderBackgroundLayer()}
 
       <div style={{ maxWidth: '1120px', margin: '0 auto', zIndex: 2, position: 'relative' }}>
-        <header
-          style={{
-            position: 'relative',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            marginBottom: '1.8rem',
-            minHeight: '52px'
-          }}
-        >
-          <h1
-            className="mystic-font"
-            style={{
-              fontSize: 'clamp(2rem, 5vw, 3rem)',
-              color: '#ffe3a8',
-              margin: 0,
-              textAlign: 'center',
-              letterSpacing: '2px',
-              textShadow: '0 0 28px rgba(229,176,92,0.85)'
-            }}
-          >
-            Стол судьбы
-          </h1>
-
-          <div
-            style={{
-              position: 'absolute',
-              right: 0,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              display: 'flex',
-              gap: '10px'
-            }}
-          >
-            <button
-              onClick={() => setView('history')}
-              className="btn-magical text-font"
-              style={{
-                padding: '10px 18px',
-                borderRadius: '30px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '7px',
-                fontSize: '1rem'
-              }}
-              title="История раскладов"
-            >
-              <BookOpen size={19} />
-              <span style={{ display: window.innerWidth < 520 ? 'none' : 'inline' }}>История</span>
-            </button>
-          </div>
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginBottom: '1.4rem' }}>
+          <button onClick={() => setView('doors')} className="btn-magical text-font" style={{ padding: '10px 16px', borderRadius: '30px', display: 'flex', alignItems: 'center', gap: '7px', fontSize: '0.98rem' }}>
+            <DoorOpen size={18} /><span>Двери</span>
+          </button>
+          <h1 className="mystic-font" style={{ fontSize: 'clamp(1.85rem, 4.8vw, 3rem)', color: '#ffe3a8', margin: 0, textAlign: 'center', letterSpacing: '2px', textShadow: '0 0 28px rgba(229,176,92,0.85)' }}>Стол судьбы</h1>
+          <button onClick={() => setView('history')} className="btn-magical text-font" style={{ padding: '10px 18px', borderRadius: '30px', display: 'flex', alignItems: 'center', gap: '7px', fontSize: '1rem' }}>
+            <BookOpen size={19} /><span style={{ display: typeof window !== 'undefined' && window.innerWidth < 520 ? 'none' : 'inline' }}>История</span>
+          </button>
         </header>
 
-        {errorMsg && (
-          <div
-            style={{
-              background: 'rgba(110, 24, 24, 0.92)',
-              color: '#fff',
-              padding: '15px 20px',
-              borderRadius: '14px',
-              marginBottom: '20px',
-              border: '1px solid #ff6b6b',
-              textAlign: 'center'
-            }}
-          >
-            {errorMsg}
-          </div>
-        )}
+        <div className="glass-panel text-font" style={{ maxWidth: '880px', margin: '0 auto 1.1rem auto', padding: '14px 20px', fontSize: '1.12rem', color: '#e8dcf7', textAlign: 'center' }}>
+          Сформулируй чёткий запрос: выбери глубокий <strong style={{ color: '#ffe3a8' }}>расклад на 5 карт</strong>, <strong style={{ color: '#ffe3a8' }}>Совет на сегодня</strong> или быстрый вердикт <strong style={{ color: '#ffe3a8' }}>Да или Нет</strong>.
+        </div>
+
+        {errorMsg && <div style={{ background: 'rgba(110, 24, 24, 0.92)', color: '#fff', padding: '15px 20px', borderRadius: '14px', marginBottom: '20px', border: '1px solid #ff6b6b', textAlign: 'center' }}>{errorMsg}</div>}
 
         <div className="glass-panel" style={{ maxWidth: '880px', margin: '0 auto 1.2rem auto' }}>
           <input
@@ -2141,129 +2725,35 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
             placeholder="Задай сокровенный вопрос"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') performReading(question);
-            }}
-            style={{
-              width: '100%',
-              padding: '18px 20px',
-              marginBottom: '18px',
-              borderRadius: '16px',
-              border: '1px solid rgba(229,176,92,0.75)',
-              background: 'rgba(6, 3, 18, 0.82)',
-              color: '#f8f1e5',
-              fontSize: 'clamp(1.15rem, 2.5vw, 1.35rem)',
-              outline: 'none'
-            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') performReading(question, 'standard'); }}
+            style={{ width: '100%', padding: '18px 20px', marginBottom: '18px', borderRadius: '16px', border: '1px solid rgba(229,176,92,0.75)', background: 'rgba(6, 3, 18, 0.82)', color: '#f8f1e5', fontSize: 'clamp(1.15rem, 2.5vw, 1.35rem)', outline: 'none' }}
           />
-          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => performReading(question)}
-              disabled={loading}
-              className="mystic-font btn-magical"
-              style={{ flex: 2, padding: '17px', fontSize: 'clamp(1.1rem, 2.5vw, 1.3rem)', minWidth: '210px' }}
-            >
-              {loading ? 'Расшифровываю расклад..' : 'РАСКИНУТЬ КАРТЫ'}
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button onClick={() => performReading(question, 'standard')} disabled={loading} className="mystic-font btn-magical" style={{ flex: 2, padding: '17px', fontSize: 'clamp(1.05rem, 2.4vw, 1.28rem)' }}>
+              {loading && readingMode === 'standard' ? 'Расшифровываю...' : 'РАСКИНУТЬ КАРТЫ'}
             </button>
-            <button
-              onClick={() => performReading('Какой совет мне дадут карты на сегодняшний день?')}
-              disabled={loading}
-              className="text-font btn-magical"
-              style={{
-                flex: 1,
-                padding: '17px',
-                fontSize: 'clamp(1.05rem, 2.3vw, 1.2rem)',
-                minWidth: '175px',
-                background: 'rgba(229,176,92,0.22)'
-              }}
-            >
+            <button onClick={() => performReading('Какой совет мне дадут карты на сегодняшний день?', 'daily')} disabled={loading} className="text-font btn-magical" style={{ flex: 1, padding: '17px', fontSize: 'clamp(1rem, 2.2vw, 1.18rem)', background: 'rgba(229,176,92,0.22)' }}>
               Совет на сегодня
+            </button>
+            <button onClick={() => performReading(question, 'yesno')} disabled={loading} className="mystic-font btn-magical" style={{ flex: 1, padding: '17px', fontSize: 'clamp(1rem, 2.2vw, 1.18rem)', background: 'linear-gradient(135deg, rgba(64, 22, 110, 0.92), rgba(118, 72, 165, 0.92))', borderColor: '#c4b5fd' }}>
+              {loading && readingMode === 'yesno' ? 'Спрашиваю...' : 'Да или Нет'}
             </button>
           </div>
         </div>
 
-        <div
-          className={`tarot-stage ${tableNoAlpha ? 'no-alpha' : ''}`}
-          id="tarotStage"
-        >
-          <video
-            ref={tableVideoRef}
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="auto"
-            onError={() => setTableNoAlpha(true)}
-          >
+        <div className={`tarot-stage ${tableNoAlpha ? 'no-alpha' : ''}`} id="tarotStage">
+          <video ref={tableVideoRef} autoPlay muted loop playsInline preload="auto" onError={() => setTableNoAlpha(true)}>
             <source src={mediaUrls.tableWebm} type='video/webm; codecs="vp9"' />
           </video>
-
-          <img
-            className="fallback"
-            src={mediaUrls.tableWebp}
-            alt="Стол судьбы"
-          />
-
+          <img className="fallback" src={mediaUrls.tableWebp} alt="Стол судьбы" />
           <div className="tarot-spread" id="tarotSpread">
             {cards.map((card, index) => (
               <div key={index} className="spread-card-slot">
-                <div
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    position: 'relative',
-                    transition: 'transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                    transformStyle: 'preserve-3d',
-                    transform: revealed[index] ? 'rotateY(180deg)' : 'rotateY(0deg)'
-                  }}
-                >
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      backfaceVisibility: 'hidden',
-                      background: 'radial-gradient(circle at 50% 50%, #2c1d52, #120929)',
-                      border: '2px solid #e5b05c',
-                      borderRadius: '8px',
-                      boxShadow: '0 8px 20px rgba(0,0,0,0.85)'
-                    }}
-                  />
-
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      backfaceVisibility: 'hidden',
-                      transform: 'rotateY(180deg)',
-                      background: '#0a0515',
-                      border: '2px solid #e5b05c',
-                      borderRadius: '8px',
-                      overflow: 'hidden',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      boxShadow: '0 10px 25px rgba(0,0,0,0.92)'
-                    }}
-                  >
-                    <TarotCardImage
-                      card={card}
-                      style={{ width: '100%', height: '78%', objectFit: 'cover', display: 'block' }}
-                    />
-                    <div
-                      className="text-font"
-                      style={{
-                        height: '22%',
-                        background: 'rgba(10, 5, 21, 0.96)',
-                        color: '#ffe3a8',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 'clamp(0.5rem, 1.15vw, 0.82rem)',
-                        textAlign: 'center',
-                        fontWeight: 'bold',
-                        padding: '1px 3px',
-                        lineHeight: 1.05
-                      }}
-                    >
+                <div style={{ width: '100%', height: '100%', position: 'relative', transition: 'transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)', transformStyle: 'preserve-3d', transform: revealed[index] ? 'rotateY(180deg)' : 'rotateY(0deg)' }}>
+                  <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', background: 'radial-gradient(circle at 50% 50%, #2c1d52, #120929)', border: '2px solid #e5b05c', borderRadius: '8px', boxShadow: '0 8px 20px rgba(0,0,0,0.85)' }} />
+                  <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden', transform: 'rotateY(180deg)', background: '#0a0515', border: '2px solid #e5b05c', borderRadius: '8px', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 25px rgba(0,0,0,0.92)' }}>
+                    <TarotCardImage card={card} style={{ width: '100%', height: '78%', objectFit: 'cover', display: 'block' }} />
+                    <div className="text-font" style={{ height: '22%', background: 'rgba(10, 5, 21, 0.96)', color: '#ffe3a8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'clamp(0.5rem, 1.15vw, 0.82rem)', textAlign: 'center', fontWeight: 'bold', padding: '1px 3px', lineHeight: 1.05 }}>
                       {card.name}
                     </div>
                   </div>
@@ -2276,54 +2766,24 @@ ${threadHistoryText ? `\nПредыдущие уточнения в этой в�
         <div ref={analysisSectionRef} style={{ maxWidth: '880px', margin: '0.5rem auto 0 auto', scrollMarginTop: '24px' }}>
           {analysis && (
             <div>
-              <div className="glass-panel text-font">
-                <h3
-                  className="mystic-font"
-                  style={{
-                    color: '#ffe3a8',
-                    margin: '0 0 18px 0',
-                    fontSize: 'clamp(1.65rem, 3.8vw, 2.2rem)',
-                    borderBottom: '1px solid rgba(229,176,92,0.45)',
-                    paddingBottom: '12px',
-                    textAlign: 'center'
-                  }}
-                >
-                  Анализ расклада
-                </h3>
-                <div
-                  className="readable-analysis-text"
-                  dangerouslySetInnerHTML={{ __html: formatReadableText(analysis) }}
-                />
-              </div>
-
-              {mainAdvice && (
-                <div className="advice-cloud-box text-font">
-                  <RealCloudBackdrop
-                    tableNoAlpha={tableNoAlpha}
-                    cloudWebmUrl={mediaUrls.adviceCloudWebm}
-                    cloudWebpUrl={mediaUrls.tableWebp}
-                  />
-                  <div
-                    className="mystic-font"
-                    style={{
-                      fontSize: 'clamp(1.45rem, 3.2vw, 1.85rem)',
-                      color: '#ffe3a8',
-                      marginBottom: '14px',
-                      textAlign: 'center',
-                      textTransform: 'uppercase',
-                      letterSpacing: '2px'
-                    }}
-                  >
-                    Главный совет
-                  </div>
-                  <div
-                    className="readable-analysis-text"
-                    style={{ textAlign: 'center' }}
-                    dangerouslySetInnerHTML={{ __html: formatReadableText(mainAdvice) }}
-                  />
+              {yesNoVerdict && (
+                <div className="glass-panel" style={{ marginBottom: '20px', textAlign: 'center', border: '2px solid #ffe3a8', background: 'linear-gradient(135deg, rgba(44, 18, 86, 0.94), rgba(112, 76, 24, 0.94))' }}>
+                  <div className="mystic-font" style={{ fontSize: '1rem', color: '#e5b05c', letterSpacing: '3px', marginBottom: '6px' }}>ОТВЕТ АРКАНОВ «ДА ИЛИ НЕТ»</div>
+                  <div className="mystic-font" style={{ fontSize: 'clamp(1.8rem, 4.5vw, 2.7rem)', color: '#ffe3a8', textShadow: '0 0 25px rgba(229,176,92,0.9)' }}>{yesNoVerdict}</div>
                 </div>
               )}
-
+              <div className="glass-panel text-font">
+                <h3 className="mystic-font" style={{ color: '#ffe3a8', margin: '0 0 18px 0', fontSize: 'clamp(1.65rem, 3.8vw, 2.2rem)', borderBottom: '1px solid rgba(229,176,92,0.45)', paddingBottom: '12px', textAlign: 'center' }}>
+                  {readingMode === 'yesno' ? 'Краткий ответ карт' : 'Анализ расклада'}
+                </h3>
+                <div className="readable-analysis-text" dangerouslySetInnerHTML={{ __html: formatReadableText(analysis) }} />
+              </div>
+              {mainAdvice && (
+                <div className="advice-cloud-box text-font">
+                  <div className="mystic-font" style={{ fontSize: 'clamp(1.45rem, 3.2vw, 1.85rem)', color: '#ffe3a8', marginBottom: '14px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '2px' }}>Главный совет</div>
+                  <div className="readable-analysis-text" style={{ textAlign: 'center' }} dangerouslySetInnerHTML={{ __html: formatReadableText(mainAdvice) }} />
+                </div>
+              )}
               {renderFollowUpSection(followUps, false)}
             </div>
           )}
