@@ -11,6 +11,7 @@ import RealCloudBackdrop from './components/RealCloudBackdrop';
 import { useSoundEngine } from './hooks/useSoundEngine';
 import { useTarotHistory } from './hooks/useTarotHistory';
 import { useDreams } from './hooks/useDreams';
+import DoorHall from './DoorHall.jsx';
 
 // Пути к медиа в папке public
 const mediaUrls = {
@@ -558,6 +559,12 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
 
   // ЭКРАН 2: ЗАЛ ДВЕРЕЙ
   if (view === 'doors') {
+        return (
+      <>
+        {renderBackgroundLayer()}
+        <DoorHall onEnter={(id) => setView(id)} />
+      </>
+    );
     const doors = [
       { id: 'table', title: 'Таро-расклады', rune: '✧ ☽ ✧', icon: <Sparkles size={40} color="#ffe3a8" />, border: '#e5b05c', glow: 'rgba(229, 176, 92, 0.45)', doorArtUrl: '/door-tarot.webp', leafBg: 'linear-gradient(165deg, rgba(44, 18, 84, 0.96), rgba(98, 64, 24, 0.96))', innerLight: 'radial-gradient(circle at 50% 50%, #fff2c2 0%, #e5b05c 45%, #2a1052 100%)' },
       { id: 'sounds', title: 'Звуки', rune: '◈ ∿ ◈', icon: <Headphones size={40} color="#99f6e4" />, border: '#5eead4', glow: 'rgba(94, 234, 212, 0.4)', doorArtUrl: '/door-sounds.webp', leafBg: 'linear-gradient(165deg, rgba(15, 44, 62, 0.96), rgba(22, 78, 82, 0.96))', innerLight: 'radial-gradient(circle at 50% 50%, #ccfbf1 0%, #2dd4bf 45%, #0f293a 100%)' },
