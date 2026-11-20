@@ -43,7 +43,7 @@ const LAYOUT = {
 
 const LAST_DOOR_KEY = 'flox_hall_front_door';
 const base = '/hall/';
-const clipName = (dev, kind, a, b) => (kind === 'rot' ? `${base}${dev}-rot-${a}-${b}.mp4?v=5` : `${base}${dev}-open-${a}.mp4`);
+const clipName = (dev, kind, a, b) => (kind === 'rot' ? `${base}${dev}-rot-${a}-${b}.mp4?v=6` : `${base}${dev}-open-${a}.mp4`);
 const stillName = (dev, d, ext = 'webp') => `${base}${dev}-hall-${d}.${ext}`;
 
 const detectDevice = () => {
