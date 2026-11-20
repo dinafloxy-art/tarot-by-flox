@@ -18,23 +18,22 @@ const DOORS = [
   { key: 'dreams', view: 'dreams', title: 'Сны', color: '#e4dcff', glow: 'rgba(167,139,250,0.9)' }
 ];
 
-// Скорость поворота (1 = исходные 5 секунд, 1.65 ≈ 3 секунды)
-const ROTATE_RATE = 1.65; // +10% к прошлой скорости
-const OPEN_RATE = 1.1;
+// Ролики поворота уже пересобраны ровно на 2 секунды, поэтому скорость 1.
+// Чтобы ускорить/замедлить, меняй ROTATE_RATE (1.2 = на 20% быстрее).
+const ROTATE_RATE = 1;
+// Открывание двери: примерно на 1 секунду быстрее прошлого
+const OPEN_RATE = 1.45;
 
 // Сколько секунд ролика отрезать (end — с конца, start — с начала).
 // Если зелёная вспышка всё ещё видна, увеличь 0.6 до 0.9.
-const TRIM = {
-  'sounds-dreams': { end: 0.6 },
-  'dreams-sounds': { start: 0.6, end: 0.2 }
-};
+const TRIM = {}; // ролики пересобраны: обрезать больше ничего не нужно
 // Все ролики останавливаем чуть раньше конца: в самых последних кадрах
 // обратных поворотов картинка темнеет.
-const END_GUARD = 0.15;
+const END_GUARD = 0.02;
 // За сколько секунд до конца поворота показывать надпись и кнопку новой двери
-const UI_EARLY = 0.6;
+const UI_EARLY = 0.45;
 // Плавная смена роликов (секунды), убирает мигание в начале поворота
-const CROSSFADE = 0.28;
+const CROSSFADE = 0.15;
 
 // Пропорции кадров и положение таблички передней двери (в процентах кадра)
 const LAYOUT = {
@@ -44,7 +43,7 @@ const LAYOUT = {
 
 const LAST_DOOR_KEY = 'flox_hall_front_door';
 const base = '/hall/';
-const clipName = (dev, kind, a, b) => (kind === 'rot' ? `${base}${dev}-rot-${a}-${b}.mp4` : `${base}${dev}-open-${a}.mp4`);
+const clipName = (dev, kind, a, b) => (kind === 'rot' ? `${base}${dev}-rot-${a}-${b}.mp4?v=5` : `${base}${dev}-open-${a}.mp4`);
 const stillName = (dev, d, ext = 'webp') => `${base}${dev}-hall-${d}.${ext}`;
 
 const detectDevice = () => {

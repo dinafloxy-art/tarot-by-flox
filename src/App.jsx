@@ -50,6 +50,58 @@ const splitAdvice = (rawText, fallbackAdvice) => {
 
 const DAILY_POSITIONS = ['Фокус дня', 'Чего остерегаться', 'Ключ к удаче дня'];
 
+
+// Бесшовная фоновая заставка: два видео по очереди, перед концом одного
+// второе плавно проявляется с начала, поэтому стыка и «замирания» нет.
+const BG_FADE = 1.2;
+function BackgroundLoop({ desktop, phone }) {
+  const refs = [useRef(null), useRef(null)];
+  const [active, setActive] = useState(0);
+  const activeRef = useRef(0);
+  const [portrait, setPortrait] = useState(() => typeof window !== 'undefined' && window.innerHeight > window.innerWidth);
+  useEffect(() => {
+    const onR = () => setPortrait(window.innerHeight > window.innerWidth);
+    window.addEventListener('resize', onR);
+    return () => window.removeEventListener('resize', onR);
+  }, []);
+  const src = portrait ? phone : desktop;
+  useEffect(() => {
+    let raf = 0;
+    let switching = false;
+    const tick = () => {
+      const cur = refs[activeRef.current].current;
+      const nextIdx = activeRef.current === 0 ? 1 : 0;
+      const nxt = refs[nextIdx].current;
+      if (cur && nxt && cur.duration && !switching && cur.currentTime >= cur.duration - BG_FADE) {
+        switching = true;
+        try { nxt.currentTime = 0; } catch (e) {}
+        const p = nxt.play();
+        const go = () => {
+          activeRef.current = nextIdx;
+          setActive(nextIdx);
+          setTimeout(() => { switching = false; }, BG_FADE * 1000 + 200);
+        };
+        if (p && p.then) p.then(go).catch(() => { switching = false; });
+        else go();
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
+  const st = (i) => ({
+    position: 'fixed', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: -1,
+    opacity: active === i ? 1 : 0, transition: `opacity ${BG_FADE}s linear`, pointerEvents: 'none'
+  });
+  return (
+    <>
+      <video id="bgVideoEl" ref={refs[0]} key={`a-${src}`} src={src} autoPlay muted playsInline preload="auto" style={st(0)} />
+      <video ref={refs[1]} key={`b-${src}`} src={src} muted playsInline preload="auto" style={st(1)} />
+    </>
+  );
+}
+
 export default function App() {
   const [view, setView] = useState('landing');
   const [errorMsg, setErrorMsg] = useState('');
@@ -65,7 +117,7 @@ export default function App() {
   const [readingMode, setReadingMode] = useState('standard');
   const [loading, setLoading] = useState(false);
   const [currentReading, setCurrentReading] = useState(null);
-  const [yesNoCount, setYesNoCount] = useState(3);
+  const yesNoCount = 1; // «Да или Нет» — всегда 1 карта
   const [memoOpen, setMemoOpen] = useState(false);
 
   // Уточнения
@@ -533,17 +585,9 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
       <div
         aria-hidden="true"
         style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', zIndex: -1, pointerEvents: 'none', background: 'radial-gradient(circle at 50% 40%, #241445 0%, #120924 60%, #070312 100%)' }}
-        dangerouslySetInnerHTML={{
-          __html: `
-            <video id="bgVideoEl" autoplay muted defaultMuted loop playsinline webkit-playsinline="true" preload="auto"
-              style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;">
-              <source media="(orientation: portrait)" src="${mediaUrls.phoneMp4}" type="video/mp4" />
-              <source media="(orientation: portrait)" src="${mediaUrls.phoneWebm}" type="video/webm" />
-              <source src="${mediaUrls.desktopMp4}" type="video/mp4" />
-              <source src="${mediaUrls.desktopWebm}" type="video/webm" />
-            </video>`
-        }}
-      />
+        >
+        <BackgroundLoop desktop={mediaUrls.desktopMp4} phone={mediaUrls.phoneMp4} />
+      </div>
       <audio ref={bgmRef} src={mediaUrls.bgmMp3} loop preload="none" />
       <audio ref={sound.customSoundAudioRef} preload="none" />
       <audio ref={sound.guideAudioRef} preload="none" />
@@ -798,11 +842,6 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
               <button onClick={() => performReading(question, 'yesno')} disabled={loading} className="mystic-font btn-magical" style={{ flex: 1, minWidth: '140px', padding: '17px', fontSize: 'clamp(1rem, 2.2vw, 1.18rem)', background: 'linear-gradient(135deg, rgba(64, 22, 110, 0.92), rgba(118, 72, 165, 0.92))', borderColor: '#c4b5fd' }}>
                 {loading && readingMode === 'yesno' ? 'Спрашиваю...' : 'Да или Нет'}
               </button>
-            </div>
-            <div className="yn-count text-font">
-              <span style={{ color: '#d8c8eb', alignSelf: 'center' }}>«Да или Нет»:</span>
-              <button className={yesNoCount === 1 ? 'active' : ''} onClick={() => setYesNoCount(1)}>1 карта</button>
-              <button className={yesNoCount === 3 ? 'active' : ''} onClick={() => setYesNoCount(3)}>3 карты</button>
             </div>
           </div>
 
