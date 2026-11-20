@@ -1,9 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-// ЗАЛ ТРЁХ ДВЕРЕЙ (шаг 3)
+// ЗАЛ ТРЁХ ДВЕРЕЙ
 // Платформа с тремя дверями: стрелки / свайп / клавиши ← → поворачивают её,
 // нажатие на переднюю дверь (или кнопку «Войти», или Enter) открывает дверь.
-// Все файлы лежат в public/hall/.
+// Все файлы лежат в папке hall/.
+//
+// Исправления:
+// • В покое на экране стоит последний кадр самого видео, а не отдельная картинка,
+//   поэтому при старте поворота ничего не меняется в размере и цвете.
+// • Два видео-слоя: новый ролик показывается только когда у него уже есть кадр,
+//   поэтому между роликами нет мигания.
+// • Зелёная вспышка в конце ролика «Звуки → Сны» обрезана (настройка TRIM ниже).
 
 const DOORS = [
   { key: 'tarot', view: 'table', title: 'Таро-расклады', color: '#ffe3a8', glow: 'rgba(229,176,92,0.85)' },
@@ -14,6 +21,13 @@ const DOORS = [
 // Скорость поворота (1 = исходные 5 секунд, 1.5 ≈ 3.3 секунды)
 const ROTATE_RATE = 1.5;
 const OPEN_RATE = 1.1;
+
+// Сколько секунд ролика отрезать (end — с конца, start — с начала).
+// Если зелёная вспышка всё ещё видна, увеличь 0.6 до 0.9.
+const TRIM = {
+  'sounds-dreams': { end: 0.6 },
+  'dreams-sounds': { start: 0.6 }
+};
 
 // Пропорции кадров и положение таблички передней двери (в процентах кадра)
 const LAYOUT = {
@@ -42,11 +56,12 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
     }
   });
   const [busy, setBusy] = useState(false);
-  const [videoVisible, setVideoVisible] = useState(false);
+  const [activeLayer, setActiveLayer] = useState(-1); // -1 = видео ещё не готово, видна картинка
   const [flash, setFlash] = useState(false);
   const [box, setBox] = useState({ w: 0, h: 0 });
 
-  const videoRef = useRef(null);
+  const videoRefs = [useRef(null), useRef(null)];
+  const layerRef = useRef(-1);
   const blobsRef = useRef({});
   const busyRef = useRef(false);
   const frontRef = useRef(front);
@@ -56,13 +71,19 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
   frontRef.current = front;
   const layout = LAYOUT[device];
 
-  // Размер «сцены»: кадр заполняет экран целиком (как object-fit: cover)
+  const showLayer = (i) => {
+    layerRef.current = i;
+    setActiveLayer(i);
+  };
+
+  // Размер «сцены»: кадр заполняет экран целиком
   useEffect(() => {
     const onResize = () => {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      setDevice(detectDevice());
-      const asp = LAYOUT[detectDevice()].aspect;
+      const dev = detectDevice();
+      setDevice(dev);
+      const asp = LAYOUT[dev].aspect;
       const w = Math.max(vw, vh * asp);
       setBox({ w, h: w / asp });
     };
@@ -123,6 +144,44 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
     []
   );
 
+  // Кадр покоя: берём ролик, который ЗАКАНЧИВАЕТСЯ на текущей двери, и встаём на его последний кадр
+  useEffect(() => {
+    if (busyRef.current) return;
+    const cur = frontRef.current;
+    const prevKey = DOORS[(cur + 2) % 3].key;
+    const curKey = DOORS[cur].key;
+    const trim = TRIM[`${prevKey}-${curKey}`] || {};
+    const url = clipName(device, 'rot', prevKey, curKey);
+    const v = videoRefs[0].current;
+    if (!v) return;
+    let alive = true;
+    layerRef.current = -1;
+    setActiveLayer(-1);
+    const seekToEnd = () => {
+      try {
+        v.currentTime = Math.max(0, (v.duration || 5) - (trim.end || 0) - 0.05);
+      } catch (e) {}
+    };
+    v.muted = true;
+    v.playsInline = true;
+    v.onloadedmetadata = () => {
+      // iPhone рисует кадр только после короткого play/pause
+      const p = v.play();
+      if (p && p.then) p.then(() => { v.pause(); seekToEnd(); }).catch(seekToEnd);
+      else seekToEnd();
+    };
+    v.onseeked = () => {
+      v.onseeked = null;
+      if (alive && !busyRef.current) showLayer(0);
+    };
+    v.src = url;
+    v.load();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [device]);
+
   const playSfx = (name, volume = 0.7) => {
     if (!sfxEnabled) return;
     try {
@@ -134,43 +193,71 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
     } catch (e) {}
   };
 
-  // Проигрывает ролик поверх кадра. Возвращает Promise, который завершается в конце ролика.
-  const playClip = useCallback((url, rate, onTime) => {
+  // Проигрывает ролик на свободном слое; слой становится видимым, только когда у него есть кадр.
+  // По окончании ролик остаётся на последнем кадре.
+  const playClip = useCallback((url, rate, onTime, trim = {}) => {
     return new Promise((resolve) => {
-      const v = videoRef.current;
+      const nextIdx = layerRef.current === 0 ? 1 : 0;
+      const v = videoRefs[nextIdx].current;
       if (!v) return resolve(false);
       const src = blobsRef.current[url] || url;
+      const startAt = trim.start || 0;
       let done = false;
+      let shown = false;
+      let raf = 0;
       const finish = (ok) => {
         if (done) return;
         done = true;
+        cancelAnimationFrame(raf);
         v.onended = null;
         v.onerror = null;
-        v.ontimeupdate = null;
-        v.onplaying = null;
+        v.onloadedmetadata = null;
+        v.onseeked = null;
         clearTimeout(safety);
         resolve(ok);
       };
       const safety = setTimeout(() => finish(false), 12000);
+      const tick = () => {
+        const d = v.duration || 5;
+        const t = v.currentTime;
+        if (!shown && !v.paused && v.readyState >= 2 && t >= startAt) {
+          shown = true;
+          const old = videoRefs[layerRef.current]?.current;
+          showLayer(nextIdx);
+          if (old && old !== v) old.pause();
+        }
+        if (onTime) onTime(t, d);
+        if (trim.end && t >= d - trim.end) {
+          v.pause();
+          finish(true);
+          return;
+        }
+        raf = requestAnimationFrame(tick);
+      };
       v.muted = true;
       v.playsInline = true;
-      v.src = src;
-      v.playbackRate = rate;
-      v.onplaying = () => {
-        v.playbackRate = rate;
-        setVideoVisible(true);
+      v.onloadedmetadata = () => {
+        if (startAt) {
+          try {
+            v.currentTime = startAt;
+          } catch (e) {}
+        }
       };
-      v.ontimeupdate = () => onTime && onTime(v.currentTime, v.duration || 5);
       v.onended = () => finish(true);
       v.onerror = () => finish(false);
+      v.src = src;
+      v.playbackRate = rate;
+      v.defaultPlaybackRate = rate;
       const p = v.play();
-      if (p && p.catch) p.catch(() => finish(false));
+      if (p && p.then) {
+        p.then(() => {
+          v.playbackRate = rate;
+        }).catch(() => finish(false));
+      }
+      raf = requestAnimationFrame(tick);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const hideVideoSoon = () => {
-    requestAnimationFrame(() => requestAnimationFrame(() => setVideoVisible(false)));
-  };
 
   const rotate = useCallback(
     async (dir) => {
@@ -179,16 +266,18 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
       setBusy(true);
       const cur = frontRef.current;
       const target = (cur + (dir > 0 ? 1 : 2)) % 3;
+      const a = DOORS[cur].key;
+      const b = DOORS[target].key;
       playSfx('platform', 0.75);
-      await playClip(clipName(device, 'rot', DOORS[cur].key, DOORS[target].key), ROTATE_RATE);
+      await playClip(clipName(device, 'rot', a, b), ROTATE_RATE, null, TRIM[`${a}-${b}`]);
       setFront(target);
       try {
         sessionStorage.setItem(LAST_DOOR_KEY, String(target));
       } catch (e) {}
-      hideVideoSoon();
       busyRef.current = false;
       setBusy(false);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [device, playClip, sfxEnabled]
   );
 
@@ -213,6 +302,7 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
     }
     busyRef.current = false;
     if (onEnter) onEnter(door.view);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [device, playClip, onEnter, sfxEnabled]);
 
   // Клавиатура
@@ -239,19 +329,28 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
     const dx = t.clientX - s.x;
     const dy = t.clientY - s.y;
     if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.2) {
-      // свайп влево = следующая дверь приезжает справа
       rotate(dx < 0 ? 1 : -1);
     }
   };
 
   const door = DOORS[front];
   const plaqueFont = Math.max(11, box.w * layout.plaque.font);
+  const layerStyle = (i) => ({
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    opacity: activeLayer === i ? 1 : 0,
+    zIndex: activeLayer === i ? 2 : 1,
+    pointerEvents: 'none'
+  });
 
   return (
     <div
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
-      style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: '#070312', zIndex: 1, touchAction: 'pan-y' }}
+      style={{ position: 'fixed', inset: 0, width: '100vw', overflow: 'hidden', background: '#070312', zIndex: 1, touchAction: 'pan-y' }}
     >
       <style>{`
         @keyframes hallHint { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
@@ -277,32 +376,19 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
           transform: 'translate(-50%, -50%)'
         }}
       >
+        {/* Картинка видна только пока видео не загрузилось */}
         <picture>
           <source srcSet={stillName(device, door.key, 'webp')} type="image/webp" />
           <img
             src={stillName(device, door.key, 'jpg')}
             alt={door.title}
             draggable={false}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', userSelect: 'none' }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', userSelect: 'none', zIndex: 0 }}
           />
         </picture>
 
-        <video
-          ref={videoRef}
-          muted
-          playsInline
-          webkit-playsinline="true"
-          preload="auto"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'fill',
-            opacity: videoVisible ? 1 : 0,
-            pointerEvents: 'none'
-          }}
-        />
+        <video ref={videoRefs[0]} muted playsInline webkit-playsinline="true" preload="auto" style={layerStyle(0)} />
+        <video ref={videoRefs[1]} muted playsInline webkit-playsinline="true" preload="auto" style={layerStyle(1)} />
 
         {/* Надпись на передней табличке */}
         <div
@@ -321,6 +407,7 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
             opacity: busy ? 0 : 1,
             transition: busy ? 'opacity .25s ease' : 'opacity .6s ease .1s',
             pointerEvents: 'none',
+            zIndex: 3,
             animation: 'plaqueGlow 3.5s ease-in-out infinite'
           }}
         >
@@ -365,6 +452,7 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
           flexDirection: 'column',
           alignItems: 'center',
           gap: '10px',
+          padding: '0 16px',
           pointerEvents: 'none',
           opacity: busy ? 0 : 1,
           transition: 'opacity .4s ease'
@@ -380,7 +468,7 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
         </button>
         <div
           className="text-font"
-          style={{ color: '#e8dcf7', fontSize: 'clamp(0.95rem, 2.2vw, 1.1rem)', textShadow: '0 2px 6px #000', animation: 'hallHint 3s ease-in-out infinite' }}
+          style={{ color: '#e8dcf7', fontSize: 'clamp(0.95rem, 2.2vw, 1.1rem)', textAlign: 'center', textShadow: '0 2px 6px #000', animation: 'hallHint 3s ease-in-out infinite' }}
         >
           Поверни платформу стрелками или свайпом
         </div>
