@@ -210,11 +210,26 @@ export const DECK = (() => {
 export const findDeckCard = (card) =>
   DECK.find((d) => d.code === card?.code || d.name === card?.name) || card;
 
-// Честное перемешивание (Фишер–Йетс)
+// Честное перемешивание (Фишер–Йетс) на криптографическом генераторе случайных чисел
+const randomInt = (max) => {
+  const c = typeof window !== 'undefined' && (window.crypto || window.msCrypto);
+  if (c && c.getRandomValues) {
+    const buf = new Uint32Array(1);
+    const limit = Math.floor(0x100000000 / max) * max; // отсекаем перекос
+    let x;
+    do {
+      c.getRandomValues(buf);
+      x = buf[0];
+    } while (x >= limit);
+    return x % max;
+  }
+  return Math.floor(Math.random() * max);
+};
+
 export const drawCards = (count, pool = DECK) => {
   const arr = [...pool];
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = randomInt(i + 1);
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr.slice(0, count);

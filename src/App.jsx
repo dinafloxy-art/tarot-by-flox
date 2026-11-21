@@ -15,6 +15,7 @@ import DoorHall from './DoorHall.jsx';
 import SoundsSection, { useTimerLeft } from './components/SoundsSection.jsx';
 import { ambient, useAmbient, MODE_META as AMB_META } from './lib/ambientEngine';
 import { createBgmLoop } from './lib/bgmLoop';
+import { binaural, useBinaural } from './lib/binauralEngine';
 
 // Пути к медиа
 const mediaUrls = {
@@ -29,28 +30,30 @@ const mediaUrls = {
 };
 
 // ИНСТРУКЦИЯ ТАРОЛОГА (утверждена по тесту «Жив ли ещё Лёша?»)
-const TAROT_CORE = `Ты — опытный таролог, работающий по классической системе Райдера–Уэйта. Ты читаешь расклад как эзотерическое послание карт о том, о ком или о чём задан вопрос.
+const TAROT_CORE = `Ты — опытный таролог, работающий строго по классической системе Райдера–Уэйта. Ты читаешь расклад о том, о ком или о чём задан вопрос.
 
 Как ты работаешь:
-- Все позиции расклада относятся к тому человеку или к той ситуации, о которых спросили. Ты описываешь его судьбу, жизненную силу, обстоятельства и путь так, как их показывают карты.
-- Каждую карту толкуешь по её классическому значению Райдера–Уэйта, учитываешь символы, стихию масти, нумерологию и связки соседних карт.
-- Язык эзотерический: арканы, энергии, стихии, повороты судьбы.
-- В начале ответа даёшь прямой вывод карт по заданному вопросу, затем раскрываешь его.
+- Все позиции расклада относятся к тому человеку или к той ситуации, о которых спросили. Описывай его положение, обстоятельства, события и дальнейший ход дел так, как их показывают карты.
+- Каждую карту толкуй по её классическому значению Райдера–Уэйта с учётом позиции, масти, номера и соседних карт. Не придумывай собственных трактовок.
+- Пиши практично и конкретно: что происходит, что будет, что делать. Никаких метафор, поэтических образов, загадок и иносказаний. Простые ясные предложения.
+- Если карты указывают на сроки, людей, деньги, здоровье, отношения, работу или препятствия, называй это прямо.
+- Отвечай на заданный вопрос, а не на соседние темы. Без оговорок, нравоучений и психологии.
+- В начале ответа дай прямой и однозначный вывод карт по вопросу, затем раскрой его.
 
 Как называть карты:
 - Полное название каждой карты пишешь один раз — в заголовке её позиции.
 - В тексте под заголовком название этой карты не повторяй и не начинай фразы с «эта карта», «карта говорит», «аркан показывает». Пиши сразу о самом человеке или ситуации.
 - В связках и итоге называй карту только там, где без этого непонятно, о какой идёт речь, и не чаще одного раза.
 
-Пиши живым, образным, точным русским языком, без воды.`;
+Пиши точным, ясным русским языком, без воды.`;
 
 const TAROT_DEEP_SYSTEM = `${TAROT_CORE}
 
 Структура ответа:
 1. Прямой ответ карт на вопрос.
-2. Разбор каждой из пяти карт в её позиции: заголовок вида «**1. Прошлое — Название карты**», под ним абзац.
-3. Ключевые связки карт.
-4. Итог расклада.
+2. Разбор каждой из пяти карт в её позиции: заголовок вида «**1. Прошлое — Название карты**», под ним абзац с конкретным значением для этого вопроса.
+3. Ключевые связки карт: что они вместе показывают на практике.
+4. Итог расклада: чем закончится и от чего это зависит.
 В самом конце строка «ГЛАВНЫЙ СОВЕТ:» и 2–3 конкретных действия, которые подсказывают карты.`;
 
 const TAROT_FOLLOWUP_SYSTEM = `${TAROT_CORE}
@@ -216,14 +219,22 @@ export default function App() {
 
   const sound = useSoundEngine({ beforeStart: pauseAllMusic });
   const amb = useAmbient();
+  const bin = useBinaural();
   // Живой эмбиент тоже выключает фоновую музыку сайта перед стартом
   useEffect(() => {
     ambient.beforeStart = () => {
       pauseAllMusic();
       if (sound.activeAudioTrack) sound.stopSoundEngine();
+      if (binaural.session) binaural.stop();
+    };
+    binaural.beforeStart = () => {
+      pauseAllMusic();
+      if (sound.activeAudioTrack) sound.stopSoundEngine();
+      if (ambient.active) ambient.stop();
     };
     return () => {
       ambient.beforeStart = null;
+      binaural.beforeStart = null;
     };
   });
   const sleepLeft = useTimerLeft(sound.timerEndsAt);
@@ -369,18 +380,12 @@ export default function App() {
     };
   }, [view]);
 
+  // Музыка не останавливается при переключении вкладок браузера; при возвращении только оживляем звук и видео
   useEffect(() => {
     const onVis = () => {
-      if (document.hidden) {
-        if (bgmRef.current && !bgmRef.current.paused) {
-          wasPlayingBeforeHideRef.current = true;
-          if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
-          bgmRef.current.pause();
-        }
-      } else {
-        if (wasPlayingBeforeHideRef.current && musicPlaying && bgmRef.current) {
-          wasPlayingBeforeHideRef.current = false;
-          bgmRef.current.play().catch(() => {});
+      if (!document.hidden) {
+        if (musicPlaying && bgmRef.current && bgmRef.current.ctx && bgmRef.current.ctx.state !== 'running') {
+          bgmRef.current.ctx.resume().catch(() => {});
         }
         startAllBackgroundVideos();
       }
@@ -394,17 +399,20 @@ export default function App() {
     startAllBackgroundVideos();
     const a = bgmRef.current;
     if (!a) return;
+    if (binaural.session) binaural.stop();
     if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+    if (typeof a.rewind === 'function') a.rewind(); // всегда с самого начала
     a.volume = 0;
     a.play()
       .then(() => {
         setMusicPlaying(true);
-        let v = 0;
+        // мягкое нарастание за 4 секунды по плавной кривой
+        const t0 = Date.now();
         fadeIntervalRef.current = setInterval(() => {
-          v = Math.min(0.6, +(v + 0.03).toFixed(2));
-          if (bgmRef.current) bgmRef.current.volume = v;
-          if (v >= 0.6) clearInterval(fadeIntervalRef.current);
-        }, 100);
+          const k = Math.min(1, (Date.now() - t0) / 4000);
+          if (bgmRef.current) bgmRef.current.volume = 0.6 * k * k;
+          if (k >= 1) clearInterval(fadeIntervalRef.current);
+        }, 60);
       })
       .catch(() => setMusicPlaying(false));
   };
@@ -498,7 +506,7 @@ ${cardsList}
           fastMode: true,
           systemPrompt: `Ты — точный таролог-эзотерик по системе Райдера–Уэйта, без оговорок, нравоучений и психологии. Сделай быстрый расклад «Совет на сегодня» на 3 картах.
 ПРАВИЛА:
-- Для каждой позиции заголовок «**Позиция — Название карты**» и под ним 1–2 живых предложения только со смыслом на сегодня, без объяснения символики, без воды и без решеток ###.
+- Для каждой позиции заголовок «**Позиция — Название карты**» и под ним 1–2 конкретных предложения по классическому значению карты на сегодня, без метафор, без объяснения символики, без воды и без решеток ###.
 - Внутри текста карты больше не упоминай.
 - В конце добавь строку "ГЛАВНЫЙ СОВЕТ:" и напиши 1–2 конкретных действия на сегодня.`,
           prompt: `РАСКЛАД «СОВЕТ НА СЕГОДНЯ»:
@@ -517,7 +525,7 @@ ${cardsList}
 Расклад на 5 карт (слева направо), все позиции относятся к тому, о ком или о чём задан вопрос:
 ${positionsList(selected)}
 
-Прочитай, что карты говорят по этому вопросу, и сделай глубокий профессиональный разбор.`
+Прочитай, что карты говорят по этому вопросу, и сделай точный практичный разбор по классическим значениям.`
         });
         ({ main, advice } = splitAdvice(raw, '1. Составь четкий план действий на ближайшие 3 дня.\n2. Заверши одно важное начатое дело сегодня вечером.'));
       }
@@ -774,7 +782,22 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
         </div>
       )}
 
-      {!musicPlaying && !sound.activeAudioTrack && !amb.active && (
+      {bin.active && !sound.activeAudioTrack && !amb.active && (
+        <div style={{ position: 'fixed', left: '12px', bottom: '16px', zIndex: 55, background: 'linear-gradient(135deg, rgba(20, 18, 60, 0.95), rgba(40, 30, 80, 0.95))', border: `1.5px solid ${bin.step.color}`, borderRadius: '26px', padding: '8px 10px 8px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 10px 30px rgba(0,0,0,0.85)', maxWidth: 'calc(100vw - 90px)' }}>
+          <div onClick={() => view !== 'sounds' && setView('sounds')} title="Открыть Звуки" style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, cursor: view !== 'sounds' ? 'pointer' : 'default' }}>
+            <Waves size={20} color={bin.step.color} style={{ flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+              <div className="mystic-font" style={{ color: '#fff3d6', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Ступень {bin.step.id} · {bin.session.title}</div>
+              <div className="text-font" style={{ color: '#d8c8eb', fontSize: '0.84rem', whiteSpace: 'nowrap' }}>{bin.isPlaying ? `${Math.floor(bin.elapsed / 60)} из ${Math.round(bin.total / 60)} мин` : 'пауза'}</div>
+            </div>
+          </div>
+          <button onClick={() => binaural.toggle()} title={bin.isPlaying ? 'Пауза' : 'Продолжить'} style={{ background: 'rgba(229,176,92,0.18)', border: '1px solid #e5b05c', color: '#ffe3a8', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            {bin.isPlaying ? <Pause size={15} /> : <Play size={15} />}
+          </button>
+        </div>
+      )}
+
+      {!musicPlaying && !sound.activeAudioTrack && !amb.active && !bin.active && (
         <div onClick={toggleMusic} className="music-hint-badge mystic-font">
           <span>Нажми</span>
           <span style={{ fontSize: '1.35rem', lineHeight: 1 }}>➔</span>

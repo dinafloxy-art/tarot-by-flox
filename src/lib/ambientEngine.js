@@ -3,6 +3,23 @@
 // Движок — один на всё приложение, поэтому звук не прерывается при переходах между разделами.
 import { useEffect, useState } from 'react';
 
+// Таймер в отдельном потоке: в фоновой вкладке браузер не замедляет его,
+// поэтому звук продолжает играть при переключении вкладок на ноутбуке.
+export function createTicker(fn, ms) {
+  let worker = null;
+  try {
+    const code = `let t=null;onmessage=(e)=>{if(e.data==='start'){if(!t)t=setInterval(()=>postMessage(0),${ms});}else{clearInterval(t);t=null;}}`;
+    const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+    worker = new Worker(url);
+    worker.onmessage = () => fn();
+    worker.postMessage('start');
+    return { stop: () => { try { worker.postMessage('stop'); worker.terminate(); } catch (e) {} } };
+  } catch (e) {
+    const id = setInterval(fn, ms);
+    return { stop: () => clearInterval(id) };
+  }
+}
+
 export const MODE_META = {
   focus: { id: 'focus', title: 'Фокус', purpose: 'для работы', subtitle: 'Глухая бочка, низкий саб-дрон D, приглушённые пэды и мягкие акценты', primaryHex: '#F2C97D', secondaryHex: '#4A2F82', primaryRgb: [242, 201, 125], secondaryRgb: [74, 47, 130], hasBpm: true },
   sleep: { id: 'sleep', title: 'Сон', purpose: 'для засыпания', subtitle: 'Тихий ночной прибой, тёплое фетровое пианино и невесомые звёздные гармоники', primaryHex: '#C9B3F5', secondaryHex: '#2A2363', primaryRgb: [201, 179, 245], secondaryRgb: [42, 35, 99], hasBpm: false },
@@ -284,7 +301,7 @@ class SoundscapeInstance {
     // если вкладка долго спала, не пытаемся «догнать» пропущенные ноты
     if (this.nextNoteTime < this.ctx.currentTime - 0.5) this.nextNoteTime = this.ctx.currentTime + 0.05;
     // в фоне (экран выключен) таймеры браузера редкие, поэтому планируем ноты с большим запасом
-    const ahead = typeof document !== 'undefined' && document.hidden ? 2.5 : 0.13;
+    const ahead = typeof document !== 'undefined' && document.hidden ? 1.2 : 0.13;
     while (this.nextNoteTime < this.ctx.currentTime + ahead) {
       this.scheduleStep(this.stepIdx, this.nextNoteTime);
       this.nextNoteTime += this.getStepDuration();
@@ -848,7 +865,7 @@ class SoundscapeController {
   _startLoop() {
     if (this.loopTimer) return;
     this.lastTs = performance.now();
-    this.loopTimer = setInterval(() => {
+    this.loopTimer = createTicker(() => {
       const ts = performance.now();
       const dt = Math.min(0.2, (ts - this.lastTs) / 1000);
       this.lastTs = ts;
@@ -910,7 +927,7 @@ class SoundscapeController {
     this.activeInstance = null;
     setTimeout(() => {
       if (inst) inst.destroy();
-      if (!this.isPlaying && this.loopTimer) { clearInterval(this.loopTimer); this.loopTimer = null; }
+      if (!this.isPlaying && this.loopTimer) { this.loopTimer.stop(); this.loopTimer = null; }
       if (!this.isPlaying) this.core.stopBridge();
       if (!this.isPlaying && this.core.ctx && this.core.ctx.state === 'running') this.core.ctx.suspend().catch(() => {});
     }, 650);

@@ -129,6 +129,14 @@ class BgmLoop {
     this._stopSource();
   }
 
+  // следующий запуск начнётся с самого начала трека
+  rewind() {
+    this._offset = 0;
+    if (this.fallback) {
+      try { this.fallback.currentTime = 0; } catch (e) {}
+    }
+  }
+
   get volume() {
     return this._vol;
   }
