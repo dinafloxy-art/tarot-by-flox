@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Pause, Volume2, VolumeX, Timer, ChevronDown, Square } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Timer, ChevronDown } from 'lucide-react';
 import { ambient, useAmbient, MODE_META, MODE_ORDER } from '../lib/ambientEngine';
 
 // ЭМБИЕНТЫ: живой генеративный звук (Фокус / Сон / Медитация / Учёба)
@@ -339,9 +339,6 @@ export default function AmbientStudio() {
           </select>
           {left > 0 && <span style={{ fontVariantNumeric: 'tabular-nums' }}>⏾ {fmt(left)}</span>}
         </div>
-        {st.active && (
-          <div className="amb-chip"><button onClick={() => ambient.stop()} title="Выключить"><Square size={16} /></button><span>Выключить</span></div>
-        )}
       </div>
       {err && <div style={{ marginTop: 12, textAlign: 'center', color: '#fecaca' }}>{err}</div>}
     </div>

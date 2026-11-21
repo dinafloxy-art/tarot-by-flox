@@ -14,6 +14,7 @@ import { useDreams } from './hooks/useDreams';
 import DoorHall from './DoorHall.jsx';
 import SoundsSection, { useTimerLeft } from './components/SoundsSection.jsx';
 import { ambient, useAmbient, MODE_META as AMB_META } from './lib/ambientEngine';
+import { createBgmLoop } from './lib/bgmLoop';
 
 // Пути к медиа
 const mediaUrls = {
@@ -21,7 +22,7 @@ const mediaUrls = {
   desktopMp4: '/media/desktop-loop-muted.mp4',
   phonePoster: '/media/phone-poster.webp',
   desktopPoster: '/media/desktop-poster.webp',
-  bgmMp3: '/media/tarot-ambient-loop.mp3',
+  bgmMp3: '/media/tarot-ambient-loop-v2.mp3',
   tableWebm: '/media/table-cloud-loop.webm',
   tableWebp: '/media/table-on-cloud.webp',
   adviceCloudWebm: '/media/cloud-loop-alpha.webm'
@@ -32,25 +33,34 @@ const TAROT_CORE = `Ты — опытный таролог, работающий
 
 Как ты работаешь:
 - Все позиции расклада относятся к тому человеку или к той ситуации, о которых спросили. Ты описываешь его судьбу, жизненную силу, обстоятельства и путь так, как их показывают карты.
-- Каждую карту ты толкуешь по её классическому значению Райдера–Уэйта, с учётом символики, стихии, нумерологии и связок соседних карт. Но это твоя внутренняя работа: в тексте ты её не показываешь.
-- В ответе только сама расшифровка: что происходит, что было, что будет и каков ответ на вопрос. Не объясняй, из какой карты, символа, детали рисунка, стихии или числа следует вывод. Никаких фраз вроде «на это указывает…», «символ … означает…», «эта карта говорит…», «меч на карте…», «масть Кубков связана с…».
-- Название каждой карты называй ровно один раз — в заголовке её позиции. Внутри текста карты больше не упоминай и не перечисляй, пиши сплошным живым повествованием.
-- Язык эзотерический и образный: судьба, энергии, повороты пути.
-- Начинай с прямого ответа карт на заданный вопрос.`;
+- Каждую карту толкуешь по её классическому значению Райдера–Уэйта, учитываешь символы, стихию масти, нумерологию и связки соседних карт.
+- Язык эзотерический: арканы, энергии, стихии, повороты судьбы.
+- В начале ответа даёшь прямой вывод карт по заданному вопросу, затем раскрываешь его.
+
+Как называть карты:
+- Полное название каждой карты пишешь один раз — в заголовке её позиции.
+- В тексте под заголовком название этой карты не повторяй и не начинай фразы с «эта карта», «карта говорит», «аркан показывает». Пиши сразу о самом человеке или ситуации.
+- В связках и итоге называй карту только там, где без этого непонятно, о какой идёт речь, и не чаще одного раза.
+
+Пиши живым, образным, точным русским языком, без воды.`;
 
 const TAROT_DEEP_SYSTEM = `${TAROT_CORE}
 
 Структура ответа:
-1. Прямой ответ карт на вопрос — 2–3 предложения.
-2. Расшифровка по позициям: для каждой из пяти позиций строка-заголовок вида «**Прошлое — Название карты**», под ней абзац только со смыслом для того, о ком вопрос.
-3. Итог расклада — один абзац, без упоминания карт.
-В самом конце строка «ГЛАВНЫЙ СОВЕТ:» и 2–3 конкретных действия.
-
-Пиши точным русским языком, без воды.`;
+1. Прямой ответ карт на вопрос.
+2. Разбор каждой из пяти карт в её позиции: заголовок вида «**1. Прошлое — Название карты**», под ним абзац.
+3. Ключевые связки карт.
+4. Итог расклада.
+В самом конце строка «ГЛАВНЫЙ СОВЕТ:» и 2–3 конкретных действия, которые подсказывают карты.`;
 
 const TAROT_FOLLOWUP_SYSTEM = `${TAROT_CORE}
 
-Сейчас задан уточняющий вопрос в рамках уже сделанного расклада, и на него вытянуты 5 новых карт. Начни с прямого ответа на уточняющий вопрос, затем дай расшифровку по пяти новым картам: заголовок «**1. Название карты**» и под ним абзац только со смыслом, с учётом всего расклада. Пиши точным русским языком, без воды. Строку «ГЛАВНЫЙ СОВЕТ» в уточнении не добавляй.`;
+Сейчас задан уточняющий вопрос в рамках уже сделанного расклада, и на него вытянуты 5 новых карт.
+Структура ответа:
+1. Прямой ответ на уточняющий вопрос.
+2. Разбор пяти новых карт: заголовок «**1. Название карты**», под ним абзац с учётом всего расклада.
+3. Короткий итог.
+Строку «ГЛАВНЫЙ СОВЕТ» в уточнении не добавляй.`;
 
 const DEEP_POSITIONS = [
   'Прошлое, что привело к нынешнему положению',
@@ -71,6 +81,23 @@ const layoutFixStyles = `
   .tarot-memo-body h4 { color: #ffe3a8; margin: 14px 0 6px; font-size: 1.15rem; }
   .tarot-memo-body ul { margin: 0; padding-left: 20px; }
   .tarot-memo-body li { margin-bottom: 4px; }
+  .fate-header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin-bottom: 1.4rem; }
+  .fate-header > button:last-child { justify-self: end; }
+  @media (max-width: 640px) {
+    .fate-header { grid-template-columns: 1fr 1fr; row-gap: 14px; }
+    .fate-header h1 { grid-column: 1 / -1; order: -1; }
+    .fate-header > button { justify-self: start; }
+    .fate-header > button:last-child { justify-self: end; }
+  }
+  .boot-screen { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+    background: radial-gradient(circle at 50% 40%, #241445 0%, #120924 60%, #070312 100%); transition: opacity .7s ease, visibility .7s ease; }
+  .boot-screen.done { opacity: 0; visibility: hidden; pointer-events: none; }
+  .boot-rune { width: 86px; height: 86px; border-radius: 50%; border: 1.5px solid rgba(229,176,92,.75); box-shadow: 0 0 30px rgba(229,176,92,.35), inset 0 0 18px rgba(229,176,92,.2);
+    display: flex; align-items: center; justify-content: center; color: #ffe3a8; font-size: 30px; animation: bootSpin 6s linear infinite; }
+  @keyframes bootSpin { to { transform: rotate(360deg); } }
+  .boot-bar { width: min(70vw, 320px); height: 4px; border-radius: 4px; background: rgba(229,176,92,.18); overflow: hidden; }
+  .boot-bar > div { height: 100%; background: linear-gradient(90deg, #b88a3c, #ffe3a8); box-shadow: 0 0 12px rgba(255,227,168,.8); transition: width .25s ease; }
+  .boot-label { color: #e8dcf7; letter-spacing: 3px; font-size: .95rem; }
   .yn-count { display: flex; gap: 6px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
   .yn-count button { background: rgba(18, 12, 38, 0.85); border: 1px solid rgba(196,181,253,0.6); color: #e8dcf7; border-radius: 20px; padding: 6px 14px; cursor: pointer; font-size: 1rem; }
   .yn-count button.active { background: linear-gradient(135deg, rgba(64, 22, 110, 0.95), rgba(118, 72, 165, 0.95)); color: #fff; border-color: #c4b5fd; }
@@ -172,6 +199,7 @@ export default function App() {
   // Музыка (плеер теперь живёт всё время и не пересоздаётся при смене раздела)
   const [musicPlaying, setMusicPlaying] = useState(false);
   const bgmRef = useRef(null);
+  if (!bgmRef.current) bgmRef.current = createBgmLoop(mediaUrls.bgmMp3);
   const fadeIntervalRef = useRef(null);
   const wasPlayingBeforeHideRef = useRef(false);
 
@@ -225,6 +253,78 @@ export default function App() {
       clearTimeout(t2);
     };
   }, []);
+
+  // ЗАГРУЗКА: всё нужное для первого экрана скачивается заранее, потом показывается разом
+  const [boot, setBoot] = useState({ done: false, hidden: false, pct: 0, urls: {} });
+  useEffect(() => {
+    let cancelled = false;
+    const ua = navigator.userAgent || '';
+    const noAlpha =
+      /iPad|iPhone|iPod/.test(ua) ||
+      (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ||
+      (/Safari/.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/.test(ua));
+    const portrait = window.innerHeight > window.innerWidth;
+    const list = [
+      portrait ? mediaUrls.phoneMp4 : mediaUrls.desktopMp4,
+      portrait ? mediaUrls.phonePoster : mediaUrls.desktopPoster,
+      noAlpha ? mediaUrls.tableWebp : mediaUrls.adviceCloudWebm
+    ];
+    const weights = [0.55, 0.1, 0.35];
+    const prog = list.map(() => 0);
+    const urls = {};
+    const report = () => {
+      if (cancelled) return;
+      const pct = Math.round(prog.reduce((s, p, i) => s + p * weights[i], 0) * 92);
+      setBoot((b) => (b.done ? b : { ...b, pct: Math.max(b.pct, pct) }));
+    };
+    const getOne = async (url, i) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('bad');
+        const total = Number(res.headers.get('content-length')) || 0;
+        let blob;
+        if (res.body && res.body.getReader && total) {
+          const reader = res.body.getReader();
+          const parts = [];
+          let got = 0;
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            parts.push(value);
+            got += value.length;
+            prog[i] = Math.min(1, got / total);
+            report();
+          }
+          blob = new Blob(parts, { type: res.headers.get('content-type') || '' });
+        } else {
+          blob = await res.blob();
+        }
+        urls[url] = URL.createObjectURL(blob);
+      } catch (e) {}
+      prog[i] = 1;
+      report();
+    };
+    const finish = () => {
+      if (cancelled) return;
+      setBoot((b) => (b.done ? b : { done: true, hidden: false, pct: 100, urls: { ...urls } }));
+      setTimeout(() => !cancelled && setBoot((b) => ({ ...b, hidden: true })), 900);
+    };
+    const safety = setTimeout(finish, 15000);
+    Promise.all([
+      ...list.map(getOne),
+      document.fonts && document.fonts.ready ? document.fonts.ready.catch(() => {}) : Promise.resolve(),
+      bgmRef.current.load().catch(() => {})
+    ]).then(() => {
+      clearTimeout(safety);
+      setTimeout(finish, 250);
+    });
+    return () => {
+      cancelled = true;
+      clearTimeout(safety);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const mu = (url) => boot.urls[url] || url;
 
   // Safari/iPhone не умеют прозрачное видео — показываем картинку
   useEffect(() => {
@@ -631,9 +731,8 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
         aria-hidden="true"
         style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', zIndex: -1, pointerEvents: 'none', background: 'radial-gradient(circle at 50% 40%, #241445 0%, #120924 60%, #070312 100%)' }}
         >
-        <BackgroundLoop desktop={mediaUrls.desktopMp4} phone={mediaUrls.phoneMp4} desktopPoster={mediaUrls.desktopPoster} phonePoster={mediaUrls.phonePoster} />
+        <BackgroundLoop desktop={mu(mediaUrls.desktopMp4)} phone={mu(mediaUrls.phoneMp4)} desktopPoster={mu(mediaUrls.desktopPoster)} phonePoster={mu(mediaUrls.phonePoster)} />
       </div>
-      <audio ref={bgmRef} src={mediaUrls.bgmMp3} loop preload="none" />
       <audio ref={sound.customSoundAudioRef} preload="none" />
       <audio ref={sound.guideAudioRef} preload="none" />
 
@@ -723,7 +822,7 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
       return (
         <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
           <div style={{ position: 'relative', zIndex: 2, textAlign: 'center', width: 'min(98vw, 900px)', minHeight: '340px', aspectRatio: '16 / 10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'clamp(1.4rem, 4vw, 3.5rem)', animation: view === 'transition' ? 'disperse 0.95s forwards' : 'tarot-sway 6s ease-in-out infinite' }}>
-            <RealCloudBackdrop tableNoAlpha={tableNoAlpha} cloudWebmUrl={mediaUrls.adviceCloudWebm} cloudWebpUrl={mediaUrls.tableWebp} />
+            <RealCloudBackdrop tableNoAlpha={tableNoAlpha} cloudWebmUrl={mu(mediaUrls.adviceCloudWebm)} cloudWebpUrl={mu(mediaUrls.tableWebp)} />
             <h1 className="mystic-font" style={{ fontSize: 'clamp(1.85rem, 5.2vw, 3.6rem)', color: '#ffe3a8', margin: '0 0 10px 0', lineHeight: 1.15, textShadow: '0 4px 18px rgba(18, 8, 38, 0.98), 0 0 30px rgba(229, 176, 92, 0.9)' }}>
               Магическое пространство ответов
             </h1>
@@ -872,7 +971,7 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
     return (
       <div style={{ minHeight: '100vh', position: 'relative', padding: '58px 14px 85px' }}>
         <div style={{ maxWidth: '1120px', margin: '0 auto', zIndex: 2, position: 'relative' }}>
-          <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', marginBottom: '1.4rem' }}>
+          <header className="fate-header">
             {backBtn('Двери', () => setView('doors'))}
             <h1 className="mystic-font" style={{ fontSize: 'clamp(1.5rem, 4.8vw, 3rem)', color: '#ffe3a8', margin: 0, textAlign: 'center', minWidth: 0, letterSpacing: '2px', textShadow: '0 0 28px rgba(229,176,92,0.85)' }}>Стол судьбы</h1>
             {backBtn('История', () => setView('history'), <BookOpen size={19} />)}
@@ -954,8 +1053,15 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
 
   return (
     <div className="app-root">
-      {renderBackgroundLayer()}
-      {renderScreen()}
+      {boot.done ? renderBackgroundLayer() : <><style>{globalStyles}</style><style>{layoutFixStyles}</style></>}
+      {boot.done && renderScreen()}
+      {!boot.hidden && (
+        <div className={`boot-screen ${boot.done ? 'done' : ''}`} aria-label="Загрузка">
+          <div className="boot-rune mystic-font">✦</div>
+          <div className="boot-bar"><div style={{ width: `${boot.pct}%` }} /></div>
+          <div className="boot-label mystic-font">{boot.pct}%</div>
+        </div>
+      )}
       {arriveKey > 0 && (
         <div
           key={arriveKey}

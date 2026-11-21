@@ -520,7 +520,7 @@ class SleepSoundscape extends SoundscapeInstance {
 
   _build() {
     const now = this.ctx.currentTime;
-    this.surfGainA = this.ctx.createGain(); this.surfGainA.gain.setValueAtTime(0.045, now);
+    this.surfGainA = this.ctx.createGain(); this.surfGainA.gain.setValueAtTime(0.15, now);
     const surfHpA = this.ctx.createBiquadFilter(); surfHpA.type = 'highpass'; surfHpA.frequency.setValueAtTime(170, now);
     this.surfFilterA = this.ctx.createBiquadFilter(); this.surfFilterA.type = 'lowpass'; this.surfFilterA.frequency.setValueAtTime(420, now); this.surfFilterA.Q.setValueAtTime(0.55, now);
     const surfPanA = this.ctx.createStereoPanner(); surfPanA.pan.setValueAtTime(-0.38, now);
@@ -528,7 +528,7 @@ class SleepSoundscape extends SoundscapeInstance {
     surfSrcA.connect(surfHpA); surfHpA.connect(this.surfFilterA); this.surfFilterA.connect(this.surfGainA); this.surfGainA.connect(surfPanA);
     surfPanA.connect(this.fadeGain); surfPanA.connect(this.revBus); surfSrcA.start(now);
 
-    this.surfGainB = this.ctx.createGain(); this.surfGainB.gain.setValueAtTime(0.032, now);
+    this.surfGainB = this.ctx.createGain(); this.surfGainB.gain.setValueAtTime(0.1, now);
     this.surfFilterB = this.ctx.createBiquadFilter(); this.surfFilterB.type = 'bandpass'; this.surfFilterB.frequency.setValueAtTime(560, now); this.surfFilterB.Q.setValueAtTime(0.6, now);
     const surfPanB = this.ctx.createStereoPanner(); surfPanB.pan.setValueAtTime(0.42, now);
     const surfSrcB = this._track(this.ctx.createBufferSource()); surfSrcB.buffer = this.core.pinkNoise; surfSrcB.loop = true;
@@ -598,10 +598,10 @@ class SleepSoundscape extends SoundscapeInstance {
     const wA = (Math.sin(this.waveAngleA) + 1) * 0.5; const wB = (Math.sin(this.waveAngleB) + 1) * 0.5;
     const now = this.ctx.currentTime;
     if (!this.destroyed && this.surfGainA && this.surfGainB) {
-      this.surfGainA.gain.setTargetAtTime(0.018 + wA * 0.068, now, 0.4);
-      this.surfFilterA.frequency.setTargetAtTime(240 + wA * 380, now, 0.4);
-      this.surfGainB.gain.setTargetAtTime(0.012 + wB * 0.045, now, 0.45);
-      this.surfFilterB.frequency.setTargetAtTime(380 + wB * 520, now, 0.45);
+      this.surfGainA.gain.setTargetAtTime(0.07 + wA * 0.24, now, 0.4);
+      this.surfFilterA.frequency.setTargetAtTime(380 + wA * 900, now, 0.4);
+      this.surfGainB.gain.setTargetAtTime(0.05 + wB * 0.16, now, 0.45);
+      this.surfFilterB.frequency.setTargetAtTime(520 + wB * 1000, now, 0.45);
     }
     this.phaseName = wA > 0.55 ? 'Прилив · тихие волны' : 'Отлив · глубокий сон';
   }
