@@ -169,6 +169,7 @@ export const createFallbackCardDataUri = (title, subtitle, symbol = '✦', accen
 
 // Приоритет: папка public (мгновенно) -> зеркала CDN
 const buildCardUrls = (primaryCode, secondaryCode = primaryCode) => [
+  `/media/cards/${primaryCode}.webp`,
   `/${primaryCode}.jpg`,
   `https://cdn.jsdelivr.net/gh/ekelen/tarot-api@master/static/cards/${primaryCode}.jpg`,
   `https://raw.githubusercontent.com/ekelen/tarot-api/master/static/cards/${primaryCode}.jpg`,

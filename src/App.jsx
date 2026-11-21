@@ -15,14 +15,14 @@ import DoorHall from './DoorHall.jsx';
 
 // Пути к медиа
 const mediaUrls = {
-  phoneWebm: '/phone-loop-muted.webm',
-  phoneMp4: '/phone-loop-muted.mp4',
-  desktopWebm: '/desktop-loop-muted.webm',
-  desktopMp4: '/desktop-loop-muted.mp4',
-  bgmMp3: '/tarot-ambient-loop.mp3',
-  tableWebm: '/table-cloud-loop.webm',
-  tableWebp: '/table-on-cloud.webp',
-  adviceCloudWebm: '/cloud-loop-alpha.webm'
+  phoneMp4: '/media/phone-loop-muted.mp4',
+  desktopMp4: '/media/desktop-loop-muted.mp4',
+  phonePoster: '/media/phone-poster.webp',
+  desktopPoster: '/media/desktop-poster.webp',
+  bgmMp3: '/media/tarot-ambient-loop.mp3',
+  tableWebm: '/media/table-cloud-loop.webm',
+  tableWebp: '/media/table-on-cloud.webp',
+  adviceCloudWebm: '/media/cloud-loop-alpha.webm'
 };
 
 // Исправление для iPhone: страница не должна сдвигаться влево-вправо
@@ -54,7 +54,7 @@ const DAILY_POSITIONS = ['Фокус дня', 'Чего остерегаться
 // Бесшовная фоновая заставка: два видео по очереди, перед концом одного
 // второе плавно проявляется с начала, поэтому стыка и «замирания» нет.
 const BG_FADE = 1.2;
-function BackgroundLoop({ desktop, phone }) {
+function BackgroundLoop({ desktop, phone, desktopPoster, phonePoster }) {
   const refs = [useRef(null), useRef(null)];
   const [active, setActive] = useState(0);
   const activeRef = useRef(0);
@@ -65,6 +65,7 @@ function BackgroundLoop({ desktop, phone }) {
     return () => window.removeEventListener('resize', onR);
   }, []);
   const src = portrait ? phone : desktop;
+  const poster = portrait ? phonePoster : desktopPoster;
   useEffect(() => {
     let raf = 0;
     let switching = false;
@@ -96,14 +97,15 @@ function BackgroundLoop({ desktop, phone }) {
   });
   return (
     <>
-      <video id="bgVideoEl" ref={refs[0]} key={`a-${src}`} src={src} autoPlay muted playsInline preload="auto" style={st(0)} />
-      <video ref={refs[1]} key={`b-${src}`} src={src} muted playsInline preload="auto" style={st(1)} />
+      <video id="bgVideoEl" ref={refs[0]} key={`a-${src}`} src={src} poster={poster} autoPlay muted playsInline preload="auto" style={st(0)} />
+      <video ref={refs[1]} key={`b-${src}`} src={src} poster={poster} muted playsInline preload="metadata" style={st(1)} />
     </>
   );
 }
 
 export default function App() {
   const [view, setView] = useState('landing');
+  const [arriveKey, setArriveKey] = useState(0); // мягкий выход из белой вспышки после двери
   const [errorMsg, setErrorMsg] = useState('');
   const [tableNoAlpha, setTableNoAlpha] = useState(false);
 
@@ -152,17 +154,27 @@ export default function App() {
   // eslint-disable-next-line no-unused-vars
   const dreams = useDreams({ onError: setErrorMsg }); // экраны «Снов» подключаются на шагах 6–7
 
-  // Предзагрузка всех карт партиями
+  // Предзагрузка: сначала кадры зала (вход без мигания), карты — потом, понемногу,
+  // чтобы не мешать загрузке первого экрана
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      for (let i = 0; i < DECK.length; i += 26) {
+    const dev = window.innerHeight > window.innerWidth ? 'ph' : 'pc';
+    const t1 = setTimeout(() => {
+      ['tarot', 'sounds', 'dreams'].forEach((k) => {
+        const img = new Image();
+        img.src = `/hall/${dev}-hall-${k}.webp?v=7`;
+      });
+    }, 1200);
+    const t2 = setTimeout(async () => {
+      for (let i = 0; i < DECK.length; i += 6) {
         if (cancelled) break;
-        await Promise.all(DECK.slice(i, i + 26).map(preloadSingleCard));
+        await Promise.all(DECK.slice(i, i + 6).map(preloadSingleCard));
       }
-    })();
+    }, 4000);
     return () => {
       cancelled = true;
+      clearTimeout(t1);
+      clearTimeout(t2);
     };
   }, []);
 
@@ -586,7 +598,7 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
         aria-hidden="true"
         style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', zIndex: -1, pointerEvents: 'none', background: 'radial-gradient(circle at 50% 40%, #241445 0%, #120924 60%, #070312 100%)' }}
         >
-        <BackgroundLoop desktop={mediaUrls.desktopMp4} phone={mediaUrls.phoneMp4} />
+        <BackgroundLoop desktop={mediaUrls.desktopMp4} phone={mediaUrls.phoneMp4} desktopPoster={mediaUrls.desktopPoster} phonePoster={mediaUrls.phonePoster} />
       </div>
       <audio ref={bgmRef} src={mediaUrls.bgmMp3} loop preload="none" />
       <audio ref={sound.customSoundAudioRef} preload="none" />
@@ -668,7 +680,14 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
 
     // ЭКРАН 2: ЗАЛ ДВЕРЕЙ
     if (view === 'doors') {
-      return <DoorHall onEnter={(id) => setView(id)} />;
+      return (
+        <DoorHall
+          onEnter={(id) => {
+            setArriveKey(Date.now());
+            setView(id);
+          }}
+        />
+      );
     }
 
     // ЭКРАН 3: ЗВУКИ (полностью строится на шаге 5)
@@ -890,6 +909,18 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
     <div className="app-root">
       {renderBackgroundLayer()}
       {renderScreen()}
+      {arriveKey > 0 && (
+        <div
+          key={arriveKey}
+          aria-hidden="true"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 100, pointerEvents: 'none',
+            background: 'radial-gradient(circle at 50% 45%, #ffffff 0%, #fffaf0 55%, #f3ecff 100%)',
+            animation: 'arriveFade 0.6s ease-out forwards'
+          }}
+        />
+      )}
+      <style>{`@keyframes arriveFade { from { opacity: 1 } to { opacity: 0; visibility: hidden } }`}</style>
     </div>
   );
 }

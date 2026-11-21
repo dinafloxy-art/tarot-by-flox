@@ -22,7 +22,7 @@ const DOORS = [
 // Чтобы ускорить/замедлить, меняй ROTATE_RATE (1.2 = на 20% быстрее).
 const ROTATE_RATE = 1;
 // Открывание двери: примерно на 1 секунду быстрее прошлого
-const OPEN_RATE = 1.45;
+const OPEN_RATE = 1.85;
 
 // Сколько секунд ролика отрезать (end — с конца, start — с начала).
 // Если зелёная вспышка всё ещё видна, увеличь 0.6 до 0.9.
@@ -43,8 +43,8 @@ const LAYOUT = {
 
 const LAST_DOOR_KEY = 'flox_hall_front_door';
 const base = '/hall/';
-const clipName = (dev, kind, a, b) => (kind === 'rot' ? `${base}${dev}-rot-${a}-${b}.mp4?v=6` : `${base}${dev}-open-${a}.mp4`);
-const stillName = (dev, d, ext = 'webp') => `${base}${dev}-hall-${d}.${ext}`;
+const clipName = (dev, kind, a, b) => (kind === 'rot' ? `${base}${dev}-rot-${a}-${b}.mp4?v=7` : `${base}${dev}-open-${a}.mp4`);
+const stillName = (dev, d, ext = 'webp') => `${base}${dev}-hall-${d}.${ext}?v=7`;
 
 const detectDevice = () => {
   if (typeof window === 'undefined') return 'pc';
@@ -67,6 +67,7 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
   const [activeLayer, setActiveLayer] = useState(-1); // -1 = видео ещё не готово, видна картинка
   const [flash, setFlash] = useState(false);
   const [box, setBox] = useState({ w: 0, h: 0 });
+  const [ready, setReady] = useState(false); // зал проявляется из темноты, когда кадр уже загружен
 
   const videoRefs = [useRef(null), useRef(null)];
   const layerRef = useRef(-1);
@@ -311,21 +312,28 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
     playSfx('door', 0.8);
     let flashed = false;
     const ok = await playClip(clipName(device, 'open', door.key), OPEN_RATE, (t, dur) => {
-      if (!flashed && t >= dur - 1.1) {
+      // белая вспышка только в самом конце (~0.3 с)
+      if (!flashed && t >= dur - 0.3 * OPEN_RATE) {
         flashed = true;
         setFlash(true);
       }
     });
     if (!ok || !flashed) {
       setFlash(true);
-      await new Promise((r) => setTimeout(r, 650));
+      await new Promise((r) => setTimeout(r, 200));
     } else {
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 120));
     }
     busyRef.current = false;
     if (onEnter) onEnter(door.view);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [device, playClip, onEnter, sfxEnabled]);
+
+  // Страховка: если кадр грузится долго, всё равно показываем зал
+  useEffect(() => {
+    const t = setTimeout(() => setReady(true), 1500);
+    return () => clearTimeout(t);
+  }, []);
 
   // Клавиатура
   useEffect(() => {
@@ -402,7 +410,9 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
           top: '50%',
           width: box.w || '100%',
           height: box.h || '100%',
-          transform: 'translate(-50%, -50%)'
+          transform: 'translate(-50%, -50%)',
+          opacity: ready ? 1 : 0,
+          transition: 'opacity .45s ease-out'
         }}
       >
         {/* Картинка видна только пока видео не загрузилось */}
@@ -412,6 +422,8 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
             src={stillName(device, door.key, 'jpg')}
             alt={door.title}
             draggable={false}
+            onLoad={() => setReady(true)}
+            onError={() => setReady(true)}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', userSelect: 'none', zIndex: 0 }}
           />
         </picture>
@@ -511,7 +523,7 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
           zIndex: 20,
           background: 'radial-gradient(circle at 50% 45%, #ffffff 0%, #fffaf0 55%, #f3ecff 100%)',
           opacity: flash ? 1 : 0,
-          transition: 'opacity .9s ease',
+          transition: 'opacity .18s ease-in',
           pointerEvents: flash ? 'auto' : 'none'
         }}
       />

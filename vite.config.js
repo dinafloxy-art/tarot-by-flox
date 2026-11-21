@@ -9,7 +9,9 @@ const copyRootMedia = () => ({
     for (const f of readdirSync('.')) {
       if (media.test(f)) cpSync(f, `dist/${f}`);
     }
-    if (existsSync('hall')) cpSync('hall', 'dist/hall', { recursive: true });
+    for (const dir of ['hall', 'media']) {
+      if (existsSync(dir)) cpSync(dir, `dist/${dir}`, { recursive: true });
+    }
   }
 });
 
