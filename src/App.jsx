@@ -277,6 +277,7 @@ export default function App() {
   }, [musicPlaying]);
 
   const startMusicWithFade = () => {
+    if (ambient.active) ambient.stop(); // фоновая музыка заменяет живой эмбиент
     startAllBackgroundVideos();
     const a = bgmRef.current;
     if (!a) return;
@@ -643,7 +644,25 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
         </div>
       )}
 
-      {!musicPlaying && !sound.activeAudioTrack && (
+      {amb.active && !sound.activeAudioTrack && (
+        <div style={{ position: 'fixed', left: '12px', bottom: '16px', zIndex: 55, background: 'linear-gradient(135deg, rgba(30, 20, 60, 0.95), rgba(60, 40, 20, 0.95))', border: `1.5px solid ${AMB_META[amb.modeId].primaryHex}`, borderRadius: '26px', padding: '8px 10px 8px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 10px 30px rgba(0,0,0,0.85), 0 0 18px rgba(229,176,92,0.3)', maxWidth: 'calc(100vw - 90px)' }}>
+          <div onClick={() => view !== 'sounds' && setView('sounds')} title="Открыть Звуки" style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, cursor: view !== 'sounds' ? 'pointer' : 'default' }}>
+            <Waves size={20} color={AMB_META[amb.modeId].primaryHex} style={{ flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+              <div className="mystic-font" style={{ color: '#fff3d6', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Эмбиент · {AMB_META[amb.modeId].title}</div>
+              <div className="text-font" style={{ color: '#d8c8eb', fontSize: '0.84rem', whiteSpace: 'nowrap' }}>{amb.isPlaying ? 'живой поток ∞' : 'пауза'}</div>
+            </div>
+          </div>
+          <button onClick={() => ambient.toggle()} title={amb.isPlaying ? 'Пауза' : 'Продолжить'} style={{ background: 'rgba(229,176,92,0.18)', border: '1px solid #e5b05c', color: '#ffe3a8', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            {amb.isPlaying ? <Pause size={15} /> : <Play size={15} />}
+          </button>
+          <button onClick={() => ambient.stop()} title="Выключить" style={{ background: 'rgba(229,176,92,0.2)', border: '1px solid #e5b05c', color: '#ffe3a8', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {!musicPlaying && !sound.activeAudioTrack && !amb.active && (
         <div onClick={toggleMusic} className="music-hint-badge mystic-font">
           <span>Нажми</span>
           <span style={{ fontSize: '1.35rem', lineHeight: 1 }}>➔</span>

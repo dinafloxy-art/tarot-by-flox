@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Headphones, Mic, Radio, Play, Pause, Timer, Volume2 } from 'lucide-react';
 import { SOUND_TABS, SOUND_TRACKS, SLEEP_TIMERS } from '../data/sounds';
+import AmbientStudio from './AmbientStudio.jsx';
 
 // РАЗДЕЛ «ЗВУКИ»: только готовые записи из каталога src/data/sounds.js
 const TAB_KEY = 'flox_sounds_tab';
@@ -69,7 +70,9 @@ export default function SoundsSection({ sound }) {
         ))}
       </div>
 
-      {tracks.length === 0 ? (
+      {tab === 'ambients' ? (
+        <AmbientStudio />
+      ) : tracks.length === 0 ? (
         <div className="snd-empty">Скоро здесь появятся новые записи.</div>
       ) : (
         <div className="snd-grid">
