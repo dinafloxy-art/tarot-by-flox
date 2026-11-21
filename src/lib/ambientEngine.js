@@ -55,6 +55,7 @@ class SharedAudioCore {
     this.limiter.connect(this.analyser);
     this.analyser.connect(this.masterGain);
     this.masterGain.connect(this.ctx.destination);
+    this._setupBackgroundBridge();
 
     this.reverbSend = this.ctx.createGain();
     this.reverbSend.gain.setValueAtTime(0.75, now);
@@ -84,6 +85,57 @@ class SharedAudioCore {
     this.delayR.connect(panR); panR.connect(this.playEnv); panR.connect(this.reverbSend);
     this.delayR.connect(fbR); fbR.connect(this.delayL);
     this.ready = true;
+  }
+
+  // iPhone: звук с выключенным экраном.
+  // Web Audio выводится через обычный аудиоэлемент (как музыка), а сессия переводится в режим «воспроизведение»,
+  // тогда iOS не глушит звук беззвучным режимом и не так охотно останавливает его при блокировке.
+  _setupBackgroundBridge() {
+    this.bridgeEl = null;
+    this.bridgeOn = false;
+    try {
+      if (navigator.audioSession) navigator.audioSession.type = 'playback';
+    } catch (e) {}
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    if (!isIOS || !this.ctx.createMediaStreamDestination) return;
+    try {
+      this.streamDest = this.ctx.createMediaStreamDestination();
+      this.masterGain.connect(this.streamDest);
+      const el = document.createElement('audio');
+      el.setAttribute('playsinline', '');
+      el.setAttribute('webkit-playsinline', '');
+      el.srcObject = this.streamDest.stream;
+      el.style.display = 'none';
+      document.body.appendChild(el);
+      this.bridgeEl = el;
+    } catch (e) {
+      this.bridgeEl = null;
+    }
+  }
+
+  // Вызывается по нажатию пользователя (Play): включает вывод через аудиоэлемент
+  startBridge() {
+    const el = this.bridgeEl;
+    if (!el) return;
+    const p = el.play();
+    const useBridge = () => {
+      if (this.bridgeOn) return;
+      this.bridgeOn = true;
+      // чтобы звук не шёл дважды, прямой выход отключаем, пока работает элемент
+      try { this.masterGain.disconnect(this.ctx.destination); } catch (e) {}
+    };
+    if (p && p.then) p.then(useBridge).catch(() => this.stopBridge());
+    else useBridge();
+  }
+
+  stopBridge() {
+    const el = this.bridgeEl;
+    if (el) { try { el.pause(); } catch (e) {} }
+    if (this.bridgeOn) {
+      this.bridgeOn = false;
+      try { this.masterGain.connect(this.ctx.destination); } catch (e) {}
+    }
   }
 
   setDelayBpm(bpm) {
@@ -231,7 +283,9 @@ class SoundscapeInstance {
     if (this.destroyed) return;
     // если вкладка долго спала, не пытаемся «догнать» пропущенные ноты
     if (this.nextNoteTime < this.ctx.currentTime - 0.5) this.nextNoteTime = this.ctx.currentTime + 0.05;
-    while (this.nextNoteTime < this.ctx.currentTime + 0.13) {
+    // в фоне (экран выключен) таймеры браузера редкие, поэтому планируем ноты с большим запасом
+    const ahead = typeof document !== 'undefined' && document.hidden ? 2.5 : 0.13;
+    while (this.nextNoteTime < this.ctx.currentTime + ahead) {
       this.scheduleStep(this.stepIdx, this.nextNoteTime);
       this.nextNoteTime += this.getStepDuration();
       this.stepIdx++;
@@ -739,10 +793,40 @@ class SoundscapeController {
     this.listeners = new Set();
     this.timerMin = 0; this.timerEndsAt = null; this.timerId = null;
     this.beforeStart = null; // App выключает другую музыку перед стартом
+    if (typeof document !== 'undefined') {
+      // вернулись на страницу или iOS «прервал» звук — продолжаем играть
+      const revive = () => {
+        if (this.isPlaying && this.core.ctx && this.core.ctx.state !== 'running') this.core.ctx.resume().catch(() => {});
+        if (this.isPlaying && this.core.bridgeOn && this.core.bridgeEl && this.core.bridgeEl.paused) this.core.bridgeEl.play().catch(() => {});
+      };
+      document.addEventListener('visibilitychange', revive);
+      window.addEventListener('focus', revive);
+      window.addEventListener('pageshow', revive);
+    }
+  }
+
+  // Карточка на экране блокировки iPhone и кнопки наушников
+  _syncMediaSession() {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    try {
+      const ms = navigator.mediaSession;
+      if (this.active) {
+        const meta = MODE_META[this.activeModeId];
+        if (typeof window.MediaMetadata === 'function') {
+          ms.metadata = new window.MediaMetadata({ title: `Эмбиент · ${meta.title}`, artist: 'Магическое пространство · by.Flox', album: meta.purpose });
+        }
+        ms.playbackState = this.isPlaying ? 'playing' : 'paused';
+        ms.setActionHandler('play', () => this.play());
+        ms.setActionHandler('pause', () => this.pause());
+        try { ms.setActionHandler('stop', () => this.stop()); } catch (e) {}
+      } else {
+        ms.playbackState = 'none';
+      }
+    } catch (e) {}
   }
 
   subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
-  _emit() { this.listeners.forEach((fn) => { try { fn(); } catch (e) {} }); }
+  _emit() { this._syncMediaSession(); this.listeners.forEach((fn) => { try { fn(); } catch (e) {} }); }
 
   get active() { return !!this.activeInstance && !this.activeInstance.destroyed; }
 
@@ -778,7 +862,11 @@ class SoundscapeController {
   async play() {
     if (this.beforeStart) { try { this.beforeStart(); } catch (e) {} }
     if (!this.core.ready) this.core.init();
+    this.core.startBridge(); // строго внутри нажатия пользователя
     if (this.core.ctx.state !== 'running') await this.core.ctx.resume();
+    this.core.ctx.onstatechange = () => {
+      if (this.isPlaying && this.core.ctx.state !== 'running' && this.core.ctx.state !== 'closed') this.core.ctx.resume().catch(() => {});
+    };
     if (!this.active) {
       this.activeInstance = this._createInstance(this.activeModeId);
       this.activeInstance.fadeIn(1.2);
@@ -823,6 +911,7 @@ class SoundscapeController {
     setTimeout(() => {
       if (inst) inst.destroy();
       if (!this.isPlaying && this.loopTimer) { clearInterval(this.loopTimer); this.loopTimer = null; }
+      if (!this.isPlaying) this.core.stopBridge();
       if (!this.isPlaying && this.core.ctx && this.core.ctx.state === 'running') this.core.ctx.suspend().catch(() => {});
     }, 650);
     if (wasActive) this._emit();

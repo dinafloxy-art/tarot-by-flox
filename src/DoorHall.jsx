@@ -37,8 +37,8 @@ const CROSSFADE = 0.15;
 
 // Пропорции кадров и положение таблички передней двери (в процентах кадра)
 const LAYOUT = {
-  pc: { aspect: 1248 / 720, plaque: { x: 50.6, y: 14.6, font: 0.0165 }, door: { l: 39, t: 27, w: 23, h: 52 } },
-  ph: { aspect: 720 / 1248, plaque: { x: 48.8, y: 28.1, font: 0.031 }, door: { l: 30, t: 32, w: 39, h: 42 } }
+  pc: { aspect: 1248 / 720, cx: 51.0, plaque: { x: 50.9, y: 14.6, font: 0.0165 }, door: { l: 39, t: 27, w: 23, h: 52 } },
+  ph: { aspect: 720 / 1248, cx: 50.2, plaque: { x: 50.3, y: 28.1, font: 0.031 }, door: { l: 30, t: 32, w: 39, h: 42 } }
 };
 
 const LAST_DOOR_KEY = 'flox_hall_front_door';
@@ -528,6 +528,8 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
           gap: '10px',
           padding: '0 16px',
           pointerEvents: 'none',
+          // центр кнопки и подсказки совпадает с центром передней двери (а не с центром экрана)
+          transform: `translateX(${(((layout.cx || 50) - 50) / 100) * (box.w || 0)}px)`,
           opacity: uiHidden ? 0 : 1,
           transition: 'opacity .35s ease'
         }}

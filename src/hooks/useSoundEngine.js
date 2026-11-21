@@ -44,7 +44,16 @@ export function useSoundEngine({ beforeStart } = {}) {
     a.src = track.src;
     a.loop = track.loop !== false;
     a.volume = volume;
+    a.setAttribute('playsinline', '');
     a.play().catch(() => {});
+    try {
+      if (navigator.audioSession) navigator.audioSession.type = 'playback';
+      if ('mediaSession' in navigator && typeof window.MediaMetadata === 'function') {
+        navigator.mediaSession.metadata = new window.MediaMetadata({ title: track.title || 'Звуки', artist: 'Магическое пространство · by.Flox' });
+        navigator.mediaSession.setActionHandler('play', () => { a.play().catch(() => {}); setPaused(false); });
+        navigator.mediaSession.setActionHandler('pause', () => { a.pause(); setPaused(true); });
+      }
+    } catch (e) {}
     setActiveAudioTrack(track);
     setPaused(false);
     armTimer(sleepTimerMin);
