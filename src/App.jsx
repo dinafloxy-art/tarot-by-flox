@@ -13,6 +13,7 @@ import { useTarotHistory } from './hooks/useTarotHistory';
 import { useDreams } from './hooks/useDreams';
 import DoorHall from './DoorHall.jsx';
 import SoundsSection, { useTimerLeft } from './components/SoundsSection.jsx';
+import { ambient, useAmbient, MODE_META as AMB_META } from './lib/ambientEngine';
 
 // Пути к медиа
 const mediaUrls = {
@@ -185,6 +186,7 @@ export default function App() {
   };
 
   const sound = useSoundEngine({ beforeStart: pauseAllMusic });
+  const amb = useAmbient();
   const sleepLeft = useTimerLeft(sound.timerEndsAt);
   // eslint-disable-next-line no-unused-vars
   const dreams = useDreams({ onError: setErrorMsg }); // экраны «Снов» подключаются на шагах 6–7
