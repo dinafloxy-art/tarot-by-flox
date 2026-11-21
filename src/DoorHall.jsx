@@ -13,9 +13,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 // • Зелёная вспышка в конце ролика «Звуки → Сны» обрезана (настройка TRIM ниже).
 
 const DOORS = [
-  { key: 'tarot', view: 'table', title: 'Таро-расклады', color: '#ffe3a8', glow: 'rgba(229,176,92,0.85)' },
-  { key: 'sounds', view: 'sounds', title: 'Звуки', color: '#b7fff1', glow: 'rgba(94,234,212,0.85)' },
-  { key: 'dreams', view: 'dreams', title: 'Сны', color: '#e4dcff', glow: 'rgba(167,139,250,0.9)' }
+  { key: 'tarot', view: 'table', title: 'Таро-расклады', plaque: 'Таро', metal: ['#fff6d6', '#f1c86a', '#a8701c', '#ffe7a6'], color: '#ffe3a8', glow: 'rgba(229,176,92,0.85)' },
+  { key: 'sounds', view: 'sounds', title: 'Звуки', plaque: 'Звуки', metal: ['#effffb', '#7ff0dc', '#127a72', '#c9fff4'], color: '#b7fff1', glow: 'rgba(94,234,212,0.85)' },
+  { key: 'dreams', view: 'dreams', title: 'Сны', plaque: 'Сны', metal: ['#fbf9ff', '#cfc2ff', '#5b49b8', '#ece6ff'], color: '#e4dcff', glow: 'rgba(167,139,250,0.9)' }
 ];
 
 // Ролики поворота уже пересобраны ровно на 2 секунды, поэтому скорость 1.
@@ -50,6 +50,29 @@ const detectDevice = () => {
   if (typeof window === 'undefined') return 'pc';
   return window.innerHeight > window.innerWidth ? 'ph' : 'pc';
 };
+
+// Орнамент по бокам надписи на табличке
+function Flourish({ id, metal, flip = false }) {
+  return (
+    <svg className="plaque-flourish" viewBox="0 0 60 24" style={flip ? { transform: 'scaleX(-1)' } : undefined} aria-hidden="true">
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={metal[0]} />
+          <stop offset="0.5" stopColor={metal[1]} />
+          <stop offset="1" stopColor={metal[2]} />
+        </linearGradient>
+      </defs>
+      <g fill="none" stroke={`url(#${id})`} strokeWidth="1.6" strokeLinecap="round">
+        <path d="M4 12 H34" />
+        <path d="M34 12 C38 4, 47 4, 48 10 C49 15, 43 16, 42 12" />
+        <path d="M34 12 C38 20, 47 20, 48 14" />
+        <path d="M14 12 C17 8, 21 8, 23 12" opacity=".7" />
+      </g>
+      <path d="M54 12 L57 9 L60 12 L57 15 Z" transform="translate(-3 0)" fill={`url(#${id})`} />
+      <circle cx="6" cy="12" r="1.6" fill={`url(#${id})`} />
+    </svg>
+  );
+}
 
 export default function DoorHall({ onEnter, sfxEnabled = true }) {
   const [device, setDevice] = useState(detectDevice);
@@ -390,6 +413,15 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
       style={{ position: 'fixed', inset: 0, width: '100vw', overflow: 'hidden', background: '#070312', zIndex: 1, touchAction: 'pan-y' }}
     >
       <style>{`
+        .plaque-title { display: flex; align-items: center; gap: .18em; white-space: nowrap; }
+        .plaque-word { font-family: 'Cormorant Unicase', 'Cormorant Garamond', serif; font-weight: 700; letter-spacing: .09em; line-height: 1;
+          background: linear-gradient(180deg, var(--m0) 0%, var(--m1) 34%, var(--m2) 52%, var(--m1) 70%, var(--m3) 100%);
+          background-size: 100% 220%; animation: plaqueShine 5s ease-in-out infinite;
+          -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+          -webkit-text-stroke: .5px rgba(28, 12, 2, .55);
+          filter: drop-shadow(0 1px 1px rgba(0,0,0,.95)) drop-shadow(0 0 5px var(--glow)) drop-shadow(0 0 14px var(--glow)); }
+        .plaque-flourish { width: 1.5em; height: .6em; flex-shrink: 0; filter: drop-shadow(0 0 4px var(--glow)); }
+        @keyframes plaqueShine { 0%,100% { background-position: 0 0 } 50% { background-position: 0 100% } }
         @keyframes hallHint { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
         @keyframes hallArrowL { 0%,100% { transform: translateY(-50%) translateX(0) } 50% { transform: translateY(-50%) translateX(-5px) } }
         @keyframes hallArrowR { 0%,100% { transform: translateY(-50%) translateX(0) } 50% { transform: translateY(-50%) translateX(5px) } }
@@ -431,28 +463,29 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
         <video ref={videoRefs[0]} muted playsInline webkit-playsinline="true" preload="auto" style={layerStyle(0)} />
         <video ref={videoRefs[1]} muted playsInline webkit-playsinline="true" preload="auto" style={layerStyle(1)} />
 
-        {/* Надпись на передней табличке */}
+        {/* Надпись на передней табличке: золото/бирюза/серебро с орнаментом */}
         <div
-          className="mystic-font"
+          className="plaque-title"
           style={{
             position: 'absolute',
             left: `${layout.plaque.x}%`,
             top: `${layout.plaque.y}%`,
             transform: 'translate(-50%, -50%)',
-            fontSize: `${plaqueFont}px`,
-            fontWeight: 700,
-            whiteSpace: 'nowrap',
-            letterSpacing: '0.04em',
-            color: door.color,
-            textShadow: `0 1px 2px rgba(20,8,2,0.95), 0 0 10px ${door.glow}, 0 0 22px ${door.glow}`,
+            fontSize: `${plaqueFont * 1.45}px`,
+            '--m0': door.metal[0],
+            '--m1': door.metal[1],
+            '--m2': door.metal[2],
+            '--m3': door.metal[3],
+            '--glow': door.glow,
             opacity: uiHidden ? 0 : 1,
             transition: uiHidden ? 'opacity .2s ease' : 'opacity .35s ease',
             pointerEvents: 'none',
-            zIndex: 3,
-            animation: 'plaqueGlow 3.5s ease-in-out infinite'
+            zIndex: 3
           }}
         >
-          {door.title}
+          <Flourish id={`fl-l-${door.key}`} metal={door.metal} />
+          <span className="plaque-word">{door.plaque}</span>
+          <Flourish id={`fl-r-${door.key}`} metal={door.metal} flip />
         </div>
 
         {/* Кликабельная область передней двери */}

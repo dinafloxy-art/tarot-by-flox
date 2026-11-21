@@ -1,4 +1,5 @@
-// Серверная функция Vercel: ключ fal хранится только в переменной окружения FAL_KEY
+// Серверная функция Vercel: ключ fal хранится только в переменной окружения FAL_KEY.
+// Запросы идут через шлюз fal OpenRouter (openrouter/router), где доступны Gemini Pro и Claude.
 export const config = { maxDuration: 60 };
 
 export default async function handler(req, res) {
@@ -13,15 +14,18 @@ export default async function handler(req, res) {
   }
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
-    const { model, system_prompt, prompt } = body;
-    if (!prompt) {
+    const { model, system_prompt, prompt, max_tokens, temperature } = body;
+    if (!prompt || !model) {
       res.status(400).json({ detail: 'Пустой запрос' });
       return;
     }
-    const falRes = await fetch('https://fal.run/fal-ai/any-llm', {
+    const payload = { model, prompt, system_prompt: system_prompt || '' };
+    if (Number.isFinite(max_tokens)) payload.max_tokens = Math.min(4000, Math.max(100, Math.round(max_tokens)));
+    if (Number.isFinite(temperature)) payload.temperature = Math.min(2, Math.max(0, temperature));
+    const falRes = await fetch('https://fal.run/openrouter/router', {
       method: 'POST',
       headers: { Authorization: `Key ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, system_prompt, prompt })
+      body: JSON.stringify(payload)
     });
     const text = await falRes.text();
     let data;
