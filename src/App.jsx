@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { VolumeX, BookOpen, Send, Trash2, Headphones, DoorOpen, Mic, Radio, Waves, X, ChevronLeft, ChevronDown } from 'lucide-react';
+import { VolumeX, BookOpen, Send, Trash2, Headphones, DoorOpen, Mic, Radio, Waves, X, ChevronLeft, ChevronDown, Play, Pause } from 'lucide-react';
 
 import { DECK, computeYesNoVerdictFromCards, drawCards, preloadSingleCard } from './data/deck';
 import { requestDeepTarotLLM } from './lib/llm';
@@ -12,6 +12,7 @@ import { useSoundEngine } from './hooks/useSoundEngine';
 import { useTarotHistory } from './hooks/useTarotHistory';
 import { useDreams } from './hooks/useDreams';
 import DoorHall from './DoorHall.jsx';
+import SoundsSection, { useTimerLeft } from './components/SoundsSection.jsx';
 
 // Пути к медиа
 const mediaUrls = {
@@ -151,6 +152,7 @@ export default function App() {
   };
 
   const sound = useSoundEngine({ beforeStart: pauseAllMusic });
+  const sleepLeft = useTimerLeft(sound.timerEndsAt);
   // eslint-disable-next-line no-unused-vars
   const dreams = useDreams({ onError: setErrorMsg }); // экраны «Снов» подключаются на шагах 6–7
 
@@ -605,13 +607,20 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
       <audio ref={sound.guideAudioRef} preload="none" />
 
       {sound.activeAudioTrack && (
-        <div style={{ position: 'fixed', left: '16px', bottom: '18px', zIndex: 55, background: 'linear-gradient(135deg, rgba(22, 12, 46, 0.95), rgba(66, 42, 96, 0.95))', border: '1.5px solid #e5b05c', borderRadius: '26px', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 10px 30px rgba(0,0,0,0.85)', maxWidth: 'calc(100vw - 100px)' }}>
-          <Waves size={20} color="#ffe3a8" />
-          <div style={{ minWidth: 0 }}>
-            <div className="mystic-font" style={{ color: '#ffe3a8', fontSize: '0.98rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sound.activeAudioTrack.title}</div>
-            <div className="text-font" style={{ color: '#d8c8eb', fontSize: '0.88rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sound.activeAudioTrack.subtitle}</div>
+        <div style={{ position: 'fixed', left: '12px', bottom: '16px', zIndex: 55, background: 'linear-gradient(135deg, rgba(10, 34, 40, 0.95), rgba(40, 30, 80, 0.95))', border: '1.5px solid #5eead4', borderRadius: '26px', padding: '8px 10px 8px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 10px 30px rgba(0,0,0,0.85), 0 0 18px rgba(94,234,212,0.3)', maxWidth: 'calc(100vw - 90px)' }}>
+          <div onClick={() => view !== 'sounds' && setView('sounds')} title="Открыть Звуки" style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, cursor: view !== 'sounds' ? 'pointer' : 'default' }}>
+            <Waves size={20} color="#99f6e4" style={{ flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+              <div className="mystic-font" style={{ color: '#ccfbf1', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sound.activeAudioTrack.title}</div>
+              <div className="text-font" style={{ color: '#b6cfd2', fontSize: '0.84rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {sound.paused ? 'пауза' : sound.activeAudioTrack.subtitle}{sleepLeft ? ` • ⏾ ${sleepLeft}` : ''}
+              </div>
+            </div>
           </div>
-          <button onClick={sound.stopSoundEngine} style={{ background: 'rgba(229,176,92,0.2)', border: '1px solid #e5b05c', color: '#ffe3a8', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+          <button onClick={sound.togglePause} title={sound.paused ? 'Продолжить' : 'Пауза'} style={{ background: 'rgba(94,234,212,0.18)', border: '1px solid #5eead4', color: '#ccfbf1', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+            {sound.paused ? <Play size={15} /> : <Pause size={15} />}
+          </button>
+          <button onClick={sound.stopSoundEngine} title="Выключить" style={{ background: 'rgba(229,176,92,0.2)', border: '1px solid #e5b05c', color: '#ffe3a8', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
             <X size={16} />
           </button>
         </div>
@@ -690,28 +699,17 @@ ${thread ? `\nПредыдущие уточнения в этой ветке:\n$
       );
     }
 
-    // ЭКРАН 3: ЗВУКИ (полностью строится на шаге 5)
+    // ЭКРАН 3: ЗВУКИ (шаг 5)
     if (view === 'sounds') {
       return (
-        <div style={{ minHeight: '100vh', padding: '55px 16px 95px', position: 'relative' }}>
+        <div style={{ minHeight: '100vh', padding: '55px 16px 110px', position: 'relative' }}>
           <div style={{ maxWidth: '1020px', margin: '0 auto', zIndex: 2, position: 'relative' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', gap: '10px', flexWrap: 'wrap' }}>
               {backBtn('В Зал Дверей', () => setView('doors'))}
               <h1 className="mystic-font" style={{ fontSize: 'clamp(1.6rem, 4.5vw, 2.7rem)', color: '#99f6e4', margin: 0, textShadow: '0 0 24px rgba(94, 234, 212, 0.65)' }}>Святилище Звука</h1>
               <div style={{ width: '120px' }} />
             </div>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '24px' }}>
-              {[
-                { id: 'meditations', label: 'Медитации и ASMR', icon: <Mic size={17} /> },
-                { id: 'ambients', label: 'Эмбиенты', icon: <Radio size={17} /> },
-                { id: 'binaural', label: 'Бинауральные ритмы', icon: <Headphones size={17} /> }
-              ].map((t) => (
-                <button key={t.id} className="mystic-font btn-magical" style={{ flex: 1, padding: '14px 18px', background: 'rgba(18, 12, 38, 0.85)' }}>
-                  {t.icon} {t.label}
-                </button>
-              ))}
-            </div>
-            <div className="glass-panel text-font">Раздел в разработке: вкладки, плееры и бинауральные ритмы появятся на шаге 5.</div>
+            <SoundsSection sound={sound} />
           </div>
         </div>
       );

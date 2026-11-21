@@ -5,7 +5,7 @@ export const MEDITATION_TRACKS = [
     category: 'Низкий женский голос',
     title: 'Погружение в тишину подсознания',
     duration: '18 мин',
-    audioUrl: '/meditation-female-deep.mp3',
+    audioUrl: null,
     desc: 'Мягкий, обволакивающий низкий женский тембр снимает телесные зажимы и переводит ум в состояние глубокого альфа-покоя.',
     baseFreq: 136.1,
     beatFreq: 8,
@@ -22,7 +22,7 @@ export const MEDITATION_TRACKS = [
     category: 'Глубокий мужской голос',
     title: 'Внутренний стержень и защита поля',
     duration: '15 мин',
-    audioUrl: '/meditation-male-anchor.mp3',
+    audioUrl: null,
     desc: 'Спокойный, баритональный мужской голос возвращает опору, собирает рассеянную энергию и выстраивает энергетический контур.',
     baseFreq: 110,
     beatFreq: 10,
@@ -39,7 +39,7 @@ export const MEDITATION_TRACKS = [
     category: 'ASMR с шёпотом',
     title: 'Шёпот ночных звёзд и шелест страниц',
     duration: '22 мин',
-    audioUrl: '/meditation-asmr-whisper.mp3',
+    audioUrl: null,
     desc: 'Близкий бинауральный шёпот, мягкое касание пергамента и хрустальные перезвоны для мгновенного снятия тревоги перед сном.',
     baseFreq: 174,
     beatFreq: 4,
@@ -56,7 +56,7 @@ export const MEDITATION_TRACKS = [
     category: 'Голосовые команды для ОС',
     title: 'Якорь осознанности на грани сна',
     duration: '25 мин',
-    audioUrl: '/meditation-lucid-commands.mp3',
+    audioUrl: null,
     desc: 'Специальная техника с голосовыми командами на засыпании: удерживает луч сознания, пока физическое тело засыпает.',
     baseFreq: 144,
     beatFreq: 6,
@@ -73,7 +73,7 @@ export const MEDITATION_TRACKS = [
     category: 'Звуки природы',
     title: 'Ночной ливень в хвойном лесу и треск костра',
     duration: '45 мин',
-    audioUrl: '/nature-night-rain.mp3',
+    audioUrl: null,
     desc: 'Чистый природный звуковой ландшафт без голоса для глубокого восстановления нервной системы и спокойного сна.',
     baseFreq: 96,
     beatFreq: 3,
@@ -87,7 +87,7 @@ export const AMBIENT_PRESETS = [
     id: 'amb-cosmos',
     title: 'Космическая обсерватория',
     tag: 'Глубокий фокус / Работа',
-    audioUrl: '/ambient-cosmos.mp3',
+    audioUrl: null,
     desc: 'Мягкие аналоговые синтезаторы и космический резонанс 432 Гц для потоковой концентрации без отвлечений.',
     freqs: [108, 162, 216, 324],
     color: '#818cf8'
@@ -96,8 +96,8 @@ export const AMBIENT_PRESETS = [
     id: 'amb-temple',
     title: 'Тибетские чаши и горный ветер',
     tag: 'Медитация / Очищение',
-    audioUrl: '/ambient-temple.mp3',
-    desc: 'Обертональные поющие чаши с длинным затуханием, выравнивающие эмоциональный фон и очищающие пространство.',
+    audioUrl: null,
+    desc: 'Обертональные поющие чаши тибетского храма с длинным затуханием, выравнивающие эмоциональный фон и очищающие пространство.',
     freqs: [136.1, 204.15, 272.2, 408.3],
     color: '#fbbf24'
   },
@@ -105,7 +105,7 @@ export const AMBIENT_PRESETS = [
     id: 'amb-ether',
     title: 'Эфирный поток (528 Гц)',
     tag: 'Релаксация / Восстановление',
-    audioUrl: '/ambient-ether.mp3',
+    audioUrl: null,
     desc: 'Тёплый гармонический кокон на частоте 528 Гц для мягкой перезагрузки после эмоциональной нагрузки.',
     freqs: [132, 198, 264, 528],
     color: '#2dd4bf'
@@ -114,12 +114,47 @@ export const AMBIENT_PRESETS = [
     id: 'amb-astral',
     title: 'Врата астральной проекции',
     tag: 'Подготовка к ОС',
-    audioUrl: '/ambient-astral.mp3',
+    audioUrl: null,
     desc: 'Глубокий суб-бас и мерцающие переливы для вечерней практики визуализации и настройки на осознанные сны.',
     freqs: [72, 108, 144, 288],
     color: '#c084fc'
+  },
+  {
+    id: 'amb-rain',
+    title: 'Дождь за окном',
+    tag: 'Сон / Уют',
+    audioUrl: null,
+    desc: 'Ровный шум дождя по стеклу, редкие тяжёлые капли и далёкий гром для спокойного засыпания.',
+    freqs: [],
+    color: '#7dd3fc'
   }
 ];
+
+// Голос для озвучки в браузере (до появления записанных голосов на шаге 8)
+export const MEDITATION_VOICES = {
+  'med-female-deep': 'female',
+  'med-male-anchor': 'male',
+  'med-asmr-whisper': 'female',
+  'med-lucid-commands': 'female',
+  'med-nature-night': null
+};
+
+// Тип синтезатора для каждого эмбиента
+export const AMBIENT_SYNTH = {
+  'amb-cosmos': 'cosmos',
+  'amb-temple': 'temple',
+  'amb-ether': 'ether',
+  'amb-astral': 'astral',
+  'amb-rain': 'rain'
+};
+
+export const CARRIERS = [
+  { hz: 136.1, label: '136.1 Гц', note: 'Частота Земли (Ом), заземление' },
+  { hz: 432, label: '432 Гц', note: 'Мягкая гармония, спокойствие' },
+  { hz: 528, label: '528 Гц', note: 'Тепло, восстановление' }
+];
+
+export const SLEEP_TIMERS = [0, 15, 30, 45, 60, 90];
 
 export const BINAURAL_WAVES = [
   { id: 'delta', name: 'Дельта-волны', hz: 2, range: '0.5 – 4 Гц', purpose: 'Глубокий сон без сновидений, физическая регенерация и полное отключение тревожного ума.' },
