@@ -438,7 +438,7 @@ export default function App() {
         fadeIntervalRef.current = setInterval(() => {
           // плавное вступление уже записано в начале трека, здесь только мягкий подъём
           const k = Math.min(1, (Date.now() - t0) / 2000);
-          if (bgmRef.current) bgmRef.current.volume = 0.6 * k;
+          if (bgmRef.current) bgmRef.current.volume = 0.42 * k;
           if (k >= 1) clearInterval(fadeIntervalRef.current);
         }, 60);
       })

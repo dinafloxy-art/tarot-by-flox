@@ -276,7 +276,7 @@ export default function AmbientStudio() {
     setErr('');
     try { await ambient.toggle(); } catch (e) { setErr('Не удалось запустить звук: ' + e.message); }
   };
-  const left = ambient.timerEndsAt ? Math.max(0, (ambient.timerEndsAt - Date.now()) / 1000) : 0;
+  const left = ambient.timerEndsAt ? Math.max(0, (ambient.timerEndsAt - Date.now()) / 1000) : (ambient.timerPausedLeft || 0) / 1000;
 
   return (
     <div className="amb-wrap text-font" style={wrapStyle}>

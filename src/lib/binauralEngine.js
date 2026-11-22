@@ -10,7 +10,7 @@ class BinauralEngine {
   constructor() {
     this.ctx = null; this.nodes = null; this.session = null; this.step = null;
     this.isPlaying = false; this.startedAt = 0; this.pausedAt = 0; this.listeners = new Set();
-    this.noiseLevel = 0.25; this.volume = 0.8; this.carrierChoice = 'auto';
+    this.noiseLevel = 0.25; this.volume = 1.0; this.carrierChoice = 'auto';
     this.beforeStart = null; this.onFinish = null; this.ticker = null; this.bridgeEl = null;
   }
 
@@ -78,7 +78,7 @@ class BinauralEngine {
       return pts[pts.length - 1].beat;
     };
     const merger = ctx.createChannelMerger(2);
-    const toneG = ctx.createGain(); toneG.gain.value = 0.22;
+    const toneG = ctx.createGain(); toneG.gain.value = 0.36;
     merger.connect(toneG); toneG.connect(this.master);
     const L = ctx.createOscillator(), R = ctx.createOscillator();
     L.type = 'sine'; R.type = 'sine';

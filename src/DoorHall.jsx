@@ -303,7 +303,7 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
       const a = DOORS[cur].key;
       const b = DOORS[target].key;
       const trim = TRIM[`${a}-${b}`] || {};
-      playSfx('platform', 0.75);
+      playSfx('platform', 0.5);
       let uiShown = false;
       const revealUi = () => {
         if (uiShown) return;
@@ -332,7 +332,7 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
     setBusy(true);
     const door = DOORS[frontRef.current];
     setUiHidden(true);
-    playSfx('door', 0.8);
+    playSfx('door', 0.55);
     let flashed = false;
     const ok = await playClip(clipName(device, 'open', door.key), OPEN_RATE, (t, dur) => {
       // белая вспышка только в самом конце (~0.3 с)

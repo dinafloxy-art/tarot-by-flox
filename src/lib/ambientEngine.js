@@ -38,7 +38,7 @@ const FOCUS_PHASES = [
 
 class SharedAudioCore {
   constructor() {
-    this.ctx = null; this.ready = false; this.masterVol = 0.82; this.isMuted = false;
+    this.ctx = null; this.ready = false; this.masterVol = 0.9; this.isMuted = false;
   }
 
   init() {
@@ -66,7 +66,7 @@ class SharedAudioCore {
     this.analyser.fftSize = 256;
     this.analyser.smoothingTimeConstant = 0.86;
     this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.setValueAtTime(this.isMuted ? 0.0001 : this.masterVol, now);
+    this.masterGain.gain.setValueAtTime(this.isMuted ? 0.0001 : this.masterVol * 1.3, now);
     this.masterInput.connect(this.playEnv);
     this.playEnv.connect(this.limiter);
     this.limiter.connect(this.analyser);
@@ -165,12 +165,12 @@ class SharedAudioCore {
 
   setMasterVolume(vol) {
     this.masterVol = Math.max(0, Math.min(1, vol));
-    if (this.ready && !this.isMuted) this.masterGain.gain.setTargetAtTime(Math.max(0.0001, this.masterVol), this.ctx.currentTime, 0.06);
+    if (this.ready && !this.isMuted) this.masterGain.gain.setTargetAtTime(Math.max(0.0001, this.masterVol * 1.3), this.ctx.currentTime, 0.06);
   }
 
   setMuted(muted) {
     this.isMuted = muted;
-    if (this.ready) this.masterGain.gain.setTargetAtTime(muted ? 0.0001 : Math.max(0.0001, this.masterVol), this.ctx.currentTime, 0.06);
+    if (this.ready) this.masterGain.gain.setTargetAtTime(muted ? 0.0001 : Math.max(0.0001, this.masterVol * 1.3), this.ctx.currentTime, 0.06);
   }
 
   fadeMaster(target, durationSec) {
@@ -892,6 +892,11 @@ class SoundscapeController {
       this.activeInstance.nextNoteTime = this.core.ctx.currentTime + 0.06;
     }
     this.isPlaying = true;
+    if (this.timerPausedLeft) {
+      const ms = this.timerPausedLeft; this.timerPausedLeft = 0;
+      this.timerEndsAt = Date.now() + ms;
+      this.timerId = setTimeout(() => { this.timerEndsAt = null; this.timerMin = 0; this.stop(); }, ms);
+    }
     this.core.fadeMaster(1.0, 0.8);
     this._startLoop();
     this._emit();
@@ -912,6 +917,11 @@ class SoundscapeController {
 
   pause() {
     if (!this.isPlaying) return;
+    // таймер замирает вместе со звуком
+    if (this.timerId) {
+      clearTimeout(this.timerId); this.timerId = null;
+      this.timerPausedLeft = Math.max(0, this.timerEndsAt - Date.now()); this.timerEndsAt = null;
+    }
     this.isPlaying = false;
     this.core.fadeMaster(0.0001, 0.65);
     this._emit();
@@ -923,8 +933,9 @@ class SoundscapeController {
   setTimer(min) {
     this.timerMin = min;
     if (this.timerId) clearTimeout(this.timerId);
-    this.timerId = null; this.timerEndsAt = null;
-    if (min) {
+    this.timerId = null; this.timerEndsAt = null; this.timerPausedLeft = 0;
+    if (min && !this.isPlaying) { this.timerPausedLeft = min * 60000; }
+    else if (min) {
       this.timerEndsAt = Date.now() + min * 60000;
       this.timerId = setTimeout(() => { this.timerEndsAt = null; this.timerMin = 0; this.stop(); }, min * 60000);
     }
@@ -933,7 +944,8 @@ class SoundscapeController {
 
   // Полная остановка (кнопка ✕ в мини-плеере, таймер, запуск другой музыки)
   stop() {
-    if (this.timerId) { clearTimeout(this.timerId); this.timerId = null; this.timerEndsAt = null; this.timerMin = 0; }
+    if (this.timerId) clearTimeout(this.timerId);
+    this.timerId = null; this.timerEndsAt = null; this.timerMin = 0; this.timerPausedLeft = 0;
     const wasActive = this.active || this.isPlaying;
     this.isPlaying = false;
     if (this.core.ready) this.core.fadeMaster(0.0001, 0.5);
