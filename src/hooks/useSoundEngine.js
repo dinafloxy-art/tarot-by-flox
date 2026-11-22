@@ -22,6 +22,7 @@ export function useSoundEngine({ beforeStart } = {}) {
     clearTimer();
     const a = customSoundAudioRef.current;
     if (a) {
+      a.onended = null;
       a.pause();
       a.removeAttribute('src');
       a.load();
@@ -39,12 +40,15 @@ export function useSoundEngine({ beforeStart } = {}) {
 
   const playTrack = (track) => {
     const a = customSoundAudioRef.current;
-    if (!a || !track) return;
+    if (!a || !track || !track.src) return;
     if (beforeStart) beforeStart();
     a.src = track.src;
     a.loop = track.loop !== false;
     a.volume = volume;
     a.setAttribute('playsinline', '');
+    a.onended = () => {
+      if (!a.loop) stopSoundEngine();
+    };
     a.play().catch(() => {});
     try {
       if (navigator.audioSession) navigator.audioSession.type = 'playback';
