@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { preloadSfx, playSfxUrl } from './lib/audio';
 
 // ЗАЛ ТРЁХ ДВЕРЕЙ
 // Платформа с тремя дверями: стрелки / свайп / клавиши ← → поворачивают её,
@@ -98,7 +99,6 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
   const busyRef = useRef(false);
   const frontRef = useRef(front);
   const touchRef = useRef(null);
-  const sfxRef = useRef({});
 
   frontRef.current = front;
   const layout = LAYOUT[device];
@@ -154,12 +154,8 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
         } catch (e) {}
       }
     })();
-    try {
-      sfxRef.current.platform = new Audio(`${base}sfx-platform.mp3`);
-      sfxRef.current.door = new Audio(`${base}sfx-door.mp3`);
-      sfxRef.current.platform.preload = 'auto';
-      sfxRef.current.door.preload = 'auto';
-    } catch (e) {}
+    preloadSfx(`${base}sfx-platform.mp3`);
+    preloadSfx(`${base}sfx-door.mp3`);
     return () => {
       cancelled = true;
     };
@@ -214,15 +210,10 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [device]);
 
-  const playSfx = (name, volume = 0.7) => {
+  const playSfx = (name, volume = 0.28) => {
     if (!sfxEnabled) return;
-    try {
-      const a = sfxRef.current[name];
-      if (!a) return;
-      a.currentTime = 0;
-      a.volume = volume;
-      a.play().catch(() => {});
-    } catch (e) {}
+    const url = name === 'platform' ? `${base}sfx-platform.mp3` : name === 'door' ? `${base}sfx-door.mp3` : '';
+    if (url) playSfxUrl(url, volume);
   };
 
   // Проигрывает ролик на свободном слое; слой становится видимым, только когда у него есть кадр.
@@ -303,7 +294,7 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
       const a = DOORS[cur].key;
       const b = DOORS[target].key;
       const trim = TRIM[`${a}-${b}`] || {};
-      playSfx('platform', 0.5);
+      playSfx('platform', 0.24);
       let uiShown = false;
       const revealUi = () => {
         if (uiShown) return;
@@ -332,7 +323,7 @@ export default function DoorHall({ onEnter, sfxEnabled = true }) {
     setBusy(true);
     const door = DOORS[frontRef.current];
     setUiHidden(true);
-    playSfx('door', 0.55);
+    playSfx('door', 0.28);
     let flashed = false;
     const ok = await playClip(clipName(device, 'open', door.key), OPEN_RATE, (t, dur) => {
       // белая вспышка только в самом конце (~0.3 с)

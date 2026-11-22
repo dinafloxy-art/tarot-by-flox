@@ -59,7 +59,7 @@ class BgmLoop {
     if (this._loading) return this._loading;
     if (!this._ensureCtx()) return Promise.reject(new Error('no audio'));
     this._loading = fetch(this.url)
-      .then((r) => r.arrayBuffer())
+      .then((r) => { if (!r.ok) throw new Error('bgm fetch failed'); return r.arrayBuffer(); })
       .then(
         (ab) =>
           new Promise((res, rej) => {
@@ -97,12 +97,19 @@ class BgmLoop {
       })
       .catch((e) => {
         if (this.paused) return;
+        // На телефонах не сваливаемся в <audio>, потому что iOS игнорирует volume и играет на 100%
+        const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+        if (isMobile) throw e;
         return this._useFallback();
       });
   }
 
   _start() {
     this._stopSource();
+    const now = this.ctx.currentTime;
+    this.gain.gain.cancelScheduledValues(now);
+    this.gain.gain.setValueAtTime(this._vol, now);
     const s = this.ctx.createBufferSource();
     s.buffer = this.buf;
     s.loop = true;
@@ -152,7 +159,15 @@ class BgmLoop {
 
   set volume(v) {
     this._vol = Math.max(0, Math.min(1, Number(v) || 0));
-    if (this.gain) this.gain.gain.setTargetAtTime(this._vol, this.ctx.currentTime, 0.05);
+    if (this.gain && this.ctx) {
+      const now = this.ctx.currentTime;
+      if (this._vol <= 0.0001) {
+        this.gain.gain.cancelScheduledValues(now);
+        this.gain.gain.setValueAtTime(0, now);
+      } else {
+        this.gain.gain.setTargetAtTime(this._vol, now, 0.05);
+      }
+    }
     if (this.fallback) this.fallback.volume = this._vol;
   }
 }

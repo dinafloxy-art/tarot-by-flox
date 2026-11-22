@@ -78,7 +78,7 @@ class BinauralEngine {
       return pts[pts.length - 1].beat;
     };
     const merger = ctx.createChannelMerger(2);
-    const toneG = ctx.createGain(); toneG.gain.value = 0.36;
+    const toneG = ctx.createGain(); toneG.gain.value = 0.48;
     merger.connect(toneG); toneG.connect(this.master);
     const L = ctx.createOscillator(), R = ctx.createOscillator();
     L.type = 'sine'; R.type = 'sine';
@@ -104,7 +104,7 @@ class BinauralEngine {
     // мягкий розовый шум как фон
     const n = ctx.createBufferSource(); n.buffer = this._noiseBuffer(); n.loop = true;
     const nf = ctx.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = 900;
-    this.noiseGain = ctx.createGain(); this.noiseGain.gain.value = this.noiseLevel * 0.5;
+    this.noiseGain = ctx.createGain(); this.noiseGain.gain.value = this.noiseLevel * 0.58;
     n.connect(nf); nf.connect(this.noiseGain); this.noiseGain.connect(this.master);
     [L, R, n].forEach((o) => o.start(now));
     nodes.push(n);
@@ -220,7 +220,7 @@ class BinauralEngine {
   }
 
   setVolume(v) { this.volume = v; if (this.out) this.out.gain.setTargetAtTime(v, this.ctx.currentTime, 0.08); this._emit(); }
-  setNoise(v) { this.noiseLevel = v; if (this.noiseGain) this.noiseGain.gain.setTargetAtTime(v * 0.5, this.ctx.currentTime, 0.1); this._emit(); }
+  setNoise(v) { this.noiseLevel = v; if (this.noiseGain) this.noiseGain.gain.setTargetAtTime(v * 0.58, this.ctx.currentTime, 0.1); this._emit(); }
   setCarrier(c) { this.carrierChoice = c; if (this.isPlaying) { const at = this.elapsed; this._teardown(); this._build(at); } this._emit(); }
 
   _watch() {

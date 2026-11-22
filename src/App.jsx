@@ -4,7 +4,7 @@ import { VolumeX, BookOpen, Send, Trash2, Headphones, DoorOpen, Mic, Radio, Wave
 import { DECK, computeYesNoVerdictFromCards, drawCards, preloadSingleCard } from './data/deck';
 import { requestDeepTarotLLM } from './lib/llm';
 import { cleanAnalysisText, formatReadableText, nowRuDate, scrollToEl } from './lib/text';
-import { playCardFlipSound, preloadFlipSound } from './lib/audio';
+import { playCardFlipSound, preloadFlipSound, preloadSfx } from './lib/audio';
 import { globalStyles } from './styles';
 import TarotCardImage from './components/TarotCardImage';
 import RealCloudBackdrop from './components/RealCloudBackdrop';
@@ -437,8 +437,11 @@ export default function App() {
         const t0 = Date.now();
         fadeIntervalRef.current = setInterval(() => {
           // плавное вступление уже записано в начале трека, здесь только мягкий подъём
-          const k = Math.min(1, (Date.now() - t0) / 2000);
-          if (bgmRef.current) bgmRef.current.volume = 0.42 * k;
+          const ua = navigator.userAgent || '';
+          const isMobile = /iPhone|iPad|iPod|Android/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+          const targetVol = isMobile ? 0.2 : 0.26;
+          const k = Math.min(1, (Date.now() - t0) / 2400);
+          if (bgmRef.current) bgmRef.current.volume = targetVol * k;
           if (k >= 1) clearInterval(fadeIntervalRef.current);
         }, 60);
       })
@@ -468,6 +471,8 @@ export default function App() {
   useEffect(() => {
     try { bgmRef.current && bgmRef.current.load().catch(() => {}); } catch (e) {}
     preloadFlipSound();
+    preloadSfx('/hall/sfx-platform.mp3');
+    preloadSfx('/hall/sfx-door.mp3');
   }, []);
 
   const enterSpace = () => {
