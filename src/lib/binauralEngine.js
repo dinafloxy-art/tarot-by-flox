@@ -130,15 +130,15 @@ class BinauralEngine {
 
   async start(step, session) {
     if (this.beforeStart) { try { this.beforeStart(); } catch (e) {} }
+    this._gen = (this._gen || 0) + 1;
     this._ensure();
+    const bridge = this._bridgeOn();
     if (this.ctx.state !== 'running') await this.ctx.resume();
-    if (this.bridgeEl) {
-      try { await this.bridgeEl.play(); this.out.disconnect(this.ctx.destination); } catch (e) {}
-    }
+    await bridge;
     this._teardown();
     this.step = step; this.session = session; this.pausedAt = 0;
     this._build(0); this.startedAt = this.ctx.currentTime + 0.05; this.isPlaying = true;
-    this._watch(); this._emit();
+    this._watch(); this._emit(); this._guard();
   }
 
   pause() {
@@ -146,18 +146,60 @@ class BinauralEngine {
     this.pausedAt = this.elapsed; this.isPlaying = false;
     const g = this.master.gain, t = this.ctx.currentTime;
     g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0.0001, t + 0.6);
-    setTimeout(() => { if (!this.isPlaying) this._teardown(); }, 700);
+    const pg = this._gen; setTimeout(() => { if (pg === this._gen && !this.isPlaying) this._teardown(); }, 700);
     this._emit();
   }
 
   async resume() {
     if (this.isPlaying || !this.session) return;
     if (this.beforeStart) { try { this.beforeStart(); } catch (e) {} }
+    this._gen = (this._gen || 0) + 1;
+    const bridge = this._bridgeOn();
     if (this.ctx.state !== 'running') await this.ctx.resume();
-    if (this.bridgeEl && this.bridgeEl.paused) this.bridgeEl.play().catch(() => {});
+    await bridge;
     this._teardown();
     this._build(this.pausedAt); this.startedAt = this.ctx.currentTime + 0.05 - this.pausedAt; this.isPlaying = true;
-    this._watch(); this._emit();
+    this._watch(); this._emit(); this._guard();
+  }
+
+  // iPhone: звук идёт через аудиоэлемент (живёт при блокировке). Если элемент не заиграл —
+  // оставляем прямой выход, чтобы звук не пропадал.
+  _bridgeOn() {
+    const el = this.bridgeEl;
+    if (!el) return Promise.resolve();
+    let p;
+    try { p = el.play(); } catch (e) { p = null; }
+    const on = () => {
+      if (this.bridgeActive) return;
+      this.bridgeActive = true;
+      try { this.out.disconnect(this.ctx.destination); } catch (e) {}
+    };
+    if (p && p.then) return p.then(on).catch(() => this._bridgeOff());
+    on();
+    return Promise.resolve();
+  }
+
+  _bridgeOff() {
+    if (this.bridgeEl) { try { this.bridgeEl.pause(); } catch (e) {} }
+    if (this.bridgeActive) {
+      this.bridgeActive = false;
+      try { this.out.connect(this.ctx.destination); } catch (e) {}
+    }
+  }
+
+  // Страховка от тишины: через секунду проверяем, что звук действительно идёт
+  _guard() {
+    const gen = this._gen;
+    const el = this.bridgeEl;
+    const t0 = el ? el.currentTime : 0;
+    setTimeout(() => {
+      if (gen !== this._gen || !this.isPlaying) return;
+      if (this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
+      if (this.bridgeActive && el && (el.paused || el.currentTime <= t0)) {
+        this.bridgeActive = false;
+        try { this.out.connect(this.ctx.destination); } catch (e) {}
+      }
+    }, 1200);
   }
 
   toggle() { return this.isPlaying ? this.pause() : this.resume(); }
@@ -169,9 +211,11 @@ class BinauralEngine {
       g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0.0001, t + 0.6);
     }
     this.isPlaying = false;
-    setTimeout(() => this._teardown(), 700);
+    const gen = (this._gen = (this._gen || 0) + 1);
+    // разбираем звук, только если за это время не запустили новый сеанс (иначе «плеер играет, а тишина»)
+    setTimeout(() => { if (gen === this._gen && !this.isPlaying) this._teardown(); }, 700);
     if (this.ticker) { this.ticker.stop(); this.ticker = null; }
-    if (this.bridgeEl) { try { this.bridgeEl.pause(); this.out.connect(this.ctx.destination); } catch (e) {} }
+    this._bridgeOff();
     this.session = null; this.step = null; this._emit();
   }
 

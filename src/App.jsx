@@ -23,7 +23,7 @@ const mediaUrls = {
   desktopMp4: '/media/desktop-loop-muted.mp4',
   phonePoster: '/media/phone-poster.webp',
   desktopPoster: '/media/desktop-poster.webp',
-  bgmMp3: '/media/tarot-ambient-loop-v3.mp3',
+  bgmMp3: '/media/tarot-ambient-loop-v4.mp3',
   tableWebm: '/media/table-cloud-loop.webm',
   tableWebp: '/media/table-on-cloud.webp',
   adviceCloudWebm: '/media/cloud-loop-alpha.webm'
@@ -213,6 +213,7 @@ export default function App() {
     if (musicPlayingRef.current) resumeMusicRef.current = true;
   };
   const fadeIntervalRef = useRef(null);
+  const mobileHeldRef = useRef(false);
   const wasPlayingBeforeHideRef = useRef(false);
 
   const tableVideoRef = useRef(null);
@@ -393,16 +394,31 @@ export default function App() {
 
   // Музыка не останавливается при переключении вкладок браузера; при возвращении только оживляем звук и видео
   useEffect(() => {
-    const onVis = () => {
-      if (!document.hidden) {
-        if (musicPlaying && bgmRef.current && bgmRef.current.ctx && bgmRef.current.ctx.state !== 'running') {
-          bgmRef.current.ctx.resume().catch(() => {});
+    // На телефоне при блокировке экрана фоновая музыка сайта выключается (звуки из «Звуков» продолжают играть),
+    // после разблокировки она мягко начинается заново. На ноутбуке музыка играет и при смене вкладок.
+    const ua = navigator.userAgent || '';
+    const isPhone = /iPhone|iPad|iPod|Android/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const onVis = (ev) => {
+      if (document.hidden || (ev && ev.type === 'pagehide')) {
+        if (isPhone && musicPlaying && bgmRef.current) {
+          mobileHeldRef.current = true;
+          if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
+          try { bgmRef.current.pause(); } catch (e) {}
+          try { bgmRef.current.ctx && bgmRef.current.ctx.suspend(); } catch (e) {}
         }
-        startAllBackgroundVideos();
+        return;
       }
+      if (mobileHeldRef.current) {
+        mobileHeldRef.current = false;
+        if (musicPlaying && !ambient.active && !binaural.session) startMusicWithFade();
+      } else if (musicPlaying && bgmRef.current && bgmRef.current.ctx && bgmRef.current.ctx.state !== 'running') {
+        bgmRef.current.ctx.resume().catch(() => {});
+      }
+      startAllBackgroundVideos();
     };
     document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', onVis);
+    return () => { document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pagehide', onVis); };
   }, [musicPlaying]);
 
   const startMusicWithFade = () => {
@@ -420,8 +436,9 @@ export default function App() {
         // мягкое нарастание за 4 секунды по плавной кривой
         const t0 = Date.now();
         fadeIntervalRef.current = setInterval(() => {
-          const k = Math.min(1, (Date.now() - t0) / 4000);
-          if (bgmRef.current) bgmRef.current.volume = 0.6 * k * k;
+          // плавное вступление уже записано в начале трека, здесь только мягкий подъём
+          const k = Math.min(1, (Date.now() - t0) / 2000);
+          if (bgmRef.current) bgmRef.current.volume = 0.6 * k;
           if (k >= 1) clearInterval(fadeIntervalRef.current);
         }, 60);
       })

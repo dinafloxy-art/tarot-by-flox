@@ -25,7 +25,7 @@ const css = `
   .amb-pill { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; padding: 6px 16px; border-radius: 999px; font-size: .92rem;
     background: rgba(8,6,22,0.75); border: 1px solid rgba(var(--acc-rgb),0.4); color: #f3e5c8; font-variant-numeric: tabular-nums; }
   .amb-pill .sep { color: rgba(var(--acc-rgb),0.6); }
-  .amb-controls { margin-top: 14px; padding: 16px 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .amb-controls { margin-top: 14px; padding: 16px 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
   @media (max-width: 640px) { .amb-controls { grid-template-columns: 1fr; } }
   .amb-ctl-head { display: flex; justify-content: space-between; font-size: .85rem; letter-spacing: .12em; text-transform: uppercase; color: #e6d5b8; margin-bottom: 8px; }
   .amb-ctl-head b { color: #fff3d6; font-weight: 500; letter-spacing: 0; text-transform: none; }
@@ -243,8 +243,8 @@ function Memo() {
           </ul>
           <h4>Как пользоваться</h4>
           <ul>
-            <li>Выберите режим и нажмите круглую кнопку. В «Фокусе» первые 30 секунд идёт мягкое вступление, потом начинается бесконечный поток.</li>
-            <li><b>Скорость</b> — общий темп звука. <b>Ритмика</b> — сколько в звуке ритма и движения, она сама слегка «дышит» вверх и вниз.
+            <li>Выберите режим и нажмите круглую кнопку или сам символ в центре (глаз, луну, лотос, книгу). В «Фокусе» первые 30 секунд идёт мягкое вступление, потом начинается бесконечный поток.</li>
+            <li><b>Скорость</b> — общий темп звука. <b>Ритмика</b> (только в «Фокусе» и «Учёбе», где есть ритм) — сколько в звуке ритма и движения, она сама слегка «дышит» вверх и вниз.
               <b> Смена фаз</b> — как часто меняется рисунок бочки или аккорды.</li>
             <li>Громкость держите тихой или средней: звук должен быть фоном, а не главным событием.</li>
             <li>Лучше всего звучит в наушниках или на хороших колонках. Звук не прерывается, когда вы переходите в Таро или в Зал Дверей, им можно управлять из мини-плеера внизу.</li>
@@ -294,7 +294,9 @@ export default function AmbientStudio() {
           </div>
         </div>
         <div className="amb-stage">
-          <Visualizer />
+          <div onClick={onPlay} role="button" aria-label={st.isPlaying ? 'Пауза' : 'Играть'} title={st.isPlaying ? 'Пауза' : 'Играть'} style={{ cursor: 'pointer', width: '100%', display: 'flex', justifyContent: 'center' }}>
+            <Visualizer />
+          </div>
           <h2 className="amb-title mystic-font">{meta.title}</h2>
           <p className="amb-sub">{meta.subtitle}</p>
           <StatusPill />
@@ -307,11 +309,11 @@ export default function AmbientStudio() {
           <input className="amb-range" type="range" min="75" max="130" value={speed} aria-label="Скорость"
             onChange={(e) => { const v = Number(e.target.value); setSpeed(v); ambient.updateParam('speed', v / 100); }} />
         </div>
-        <div>
+        {meta.hasBpm && <div>
           <div className="amb-ctl-head"><span>Ритмика</span><b>{rhythm}%</b></div>
           <input className="amb-range" type="range" min="0" max="100" value={rhythm} aria-label="Ритмика"
             onChange={(e) => { const v = Number(e.target.value); setRhythm(v); ambient.updateParam('rhythm', v / 100); }} />
-        </div>
+        </div>}
         <div>
           <div className="amb-ctl-head"><span>Смена фаз</span><b>{phaseFreqLabel(phaseFreq)}</b></div>
           <input className="amb-range" type="range" min="10" max="100" value={phaseFreq} aria-label="Смена фаз"

@@ -877,6 +877,7 @@ class SoundscapeController {
   }
 
   async play() {
+    this._gen = (this._gen || 0) + 1; // отменяет отложенную остановку, если звук запустили сразу после стопа
     if (this.beforeStart) { try { this.beforeStart(); } catch (e) {} }
     if (!this.core.ready) this.core.init();
     this.core.startBridge(); // строго внутри нажатия пользователя
@@ -894,6 +895,19 @@ class SoundscapeController {
     this.core.fadeMaster(1.0, 0.8);
     this._startLoop();
     this._emit();
+    // Страховка от тишины: через секунду проверяем, что звук действительно идёт
+    const gen = this._gen;
+    const el = this.core.bridgeEl;
+    const t0 = el ? el.currentTime : 0;
+    setTimeout(() => {
+      if (gen !== this._gen || !this.isPlaying) return;
+      if (this.core.ctx.state !== 'running') this.core.ctx.resume().catch(() => {});
+      if (this.core.bridgeOn && el && (el.paused || el.currentTime <= t0)) {
+        this.core.bridgeOn = false;
+        try { this.core.masterGain.connect(this.core.ctx.destination); } catch (err) {}
+      }
+      this.core.fadeMaster(1.0, 0.3);
+    }, 1200);
   }
 
   pause() {
@@ -925,8 +939,10 @@ class SoundscapeController {
     if (this.core.ready) this.core.fadeMaster(0.0001, 0.5);
     const inst = this.activeInstance;
     this.activeInstance = null;
+    const gen = (this._gen = (this._gen || 0) + 1);
     setTimeout(() => {
       if (inst) inst.destroy();
+      if (gen !== this._gen) return; // звук уже запустили заново — не глушим его
       if (!this.isPlaying && this.loopTimer) { this.loopTimer.stop(); this.loopTimer = null; }
       if (!this.isPlaying) this.core.stopBridge();
       if (!this.isPlaying && this.core.ctx && this.core.ctx.state === 'running') this.core.ctx.suspend().catch(() => {});

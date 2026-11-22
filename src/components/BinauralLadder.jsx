@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Play, Pause, Square, Lock, Check, ChevronDown, Headphones, Volume2, Waves } from 'lucide-react';
-import { STEPS, CARRIERS, readProgress, markDone, stepDone } from '../data/binaural';
+import { STEPS, CARRIERS, readProgress, markDone, stepDone, sessionsDone, setMastered } from '../data/binaural';
 import { binaural, useBinaural, curveOf } from '../lib/binauralEngine';
 
 // ВКЛАДКА «БИНАУРАЛЬНЫЕ РИТМЫ»: лестница из 7 ступеней от расслабления до астрала
@@ -101,9 +101,11 @@ export default function BinauralLadder() {
             </ul>
             <h4>Как проходить лестницу</h4>
             <ul>
-              <li>Ступени идут от простого к сложному. Следующая открывается, когда до конца пройден хотя бы один сеанс предыдущей.</li>
-              <li>Занимайся 4–5 раз в неделю. На каждой ступени задержись, пока состояние не станет приходить легко, обычно 1–2 недели.</li>
-              <li>Каждый сеанс начинается с привычного ритма и плавно уводит вниз. Подсказки на экране меняются по ходу практики.</li>
+              <li>Ступени идут строго по порядку, от простого к сложному: каждая держится на навыке предыдущей, перепрыгивать не нужно.</li>
+              <li>У каждой ступени указан срок и признак освоения. Занимайся 4–5 раз в неделю, лучше в одно и то же время.</li>
+              <li>Отметку «Состояние достигается легко» ставь, только когда нужное состояние начинает приходить само и стабильно, а не после одного удачного раза. После этой отметки откроется следующая ступень.</li>
+              <li>Если на ступени прошло больше срока, а состояния нет, вернись на ступень назад на 2–3 практики, потом продолжай.</li>
+              <li>Перед сеансом прочитай, как проходит практика. Во время сеанса глаза закрыты, звук ведёт сам, от привычного ритма плавно вниз.</li>
               <li>После каждой практики записывай образы и ощущения в Дневник снов. По этим записям раз в неделю делается таро-разбор.</li>
             </ul>
             <h4>Важно</h4>
@@ -139,7 +141,7 @@ export default function BinauralLadder() {
               <select value={st.carrier} onChange={(e) => binaural.setCarrier(e.target.value === 'auto' ? 'auto' : Number(e.target.value))}>
                 {CARRIERS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
               </select></label>
-            <button className="bn-btn" onClick={() => { setProgress(markDone(st.session.id)); binaural.stop(); }}><Check size={16} /> Практика выполнена</button>
+            <button className="bn-btn" onClick={() => { setProgress(markDone(st.session.id)); binaural.stop(); }}><Check size={16} /> Засчитать практику</button>
           </div>
         </div>
       )}
@@ -160,6 +162,19 @@ export default function BinauralLadder() {
               {isOpen && (
                 <div className="bn-body">
                   <div style={{ color: '#dcd6f3', lineHeight: 1.55 }}>{step.goal}</div>
+                  {step.period && (
+                    <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(229,176,92,0.25)', lineHeight: 1.5 }}>
+                      <div><span style={{ color: '#ffe3a8' }}>Срок:</span> {step.period}, 4–5 практик в неделю</div>
+                      <div style={{ marginTop: 4 }}><span style={{ color: '#ffe3a8' }}>Ступень освоена, когда:</span> {step.sign}</div>
+                      {ok && <div style={{ marginTop: 4, color: '#a9a3c7' }}>Практик пройдено: {sessionsDone(progress, step)}</div>}
+                      {ok && (
+                        <button className="bn-btn" style={{ marginTop: 8 }}
+                          onClick={() => setProgress(setMastered(step.id, !done))}>
+                          <Check size={16} /> {done ? 'Освоено · снять отметку' : 'Состояние достигается легко'}
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {ok && step.sessions[0] && (
                     <details style={{ marginTop: 10, color: '#cfc8ea' }}>
                       <summary style={{ cursor: 'pointer', color: '#ffe3a8' }}>Как проходит практика (прочитай до начала)</summary>
@@ -171,7 +186,7 @@ export default function BinauralLadder() {
                   )}
                   {!ok && (
                     <div style={{ marginTop: 10, color: '#c4b5fd' }}>
-                      Откроется после того, как ты пройдёшь сеанс ступени {step.id - 1}.{' '}
+                      Откроется, когда ступень {step.id - 1} будет отмечена как освоенная.{' '}
                       <button className="bn-link" onClick={() => { setUnlockAll(true); try { localStorage.setItem('flox_bn_unlock', '1'); } catch (e) {} }}>Открыть все ступени</button>
                     </div>
                   )}
@@ -184,7 +199,7 @@ export default function BinauralLadder() {
                             <div className="bn-play">{on && st.isPlaying ? <Pause size={18} /> : <Play size={18} />}</div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div className="mystic-font" style={{ fontSize: '1.05rem' }}>{s.title}</div>
-                              <div style={{ color: '#a9a3c7', fontSize: '.92rem' }}>{s.min} мин{progress[s.id] ? ` · пройдено ${progress[s.id]}` : ''}</div>
+                              <div style={{ color: '#a9a3c7', fontSize: '.92rem' }}>{s.min} мин</div>
                               <Curve session={s} color={step.color} elapsed={on ? st.elapsed : null} />
                             </div>
                           </div>

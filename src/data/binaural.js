@@ -107,7 +107,18 @@ const mergeSessions = (step) => {
   };
 };
 
-export const STEPS = RAW_STEPS.map(mergeSessions);
+// Сколько заниматься на ступени и по какому признаку понять, что она освоена
+const MASTERY = {
+  1: { period: '1–2 недели', sign: 'За 5–7 минут тело само становится тяжёлым и тёплым, мысли затихают без усилия.' },
+  2: { period: '2–3 недели', sign: 'Тело «засыпает» (тяжесть, онемение, не чувствуешь положения рук), а ум остаётся ясным 10 минут и дольше.' },
+  3: { period: '2–4 недели', sign: 'На засыпании ты регулярно замечаешь образы, звуки и обрывки сцен и не проваливаешься в сон.' },
+  4: { period: '3–4 недели', sign: 'Образы приходят яркими и устойчивыми, за ними можно спокойно наблюдать несколько минут.' },
+  5: { period: '4–6 недель', sign: 'Ты осознаёшь себя во сне хотя бы раз в неделю и можешь удержать осознанность.' },
+  6: { period: '1–2 месяца', sign: 'Вибрации приходят уверенно, и уже был хотя бы один выход из тела, который повторяется.' },
+  7: { period: 'от 2 месяцев, дальше без ограничений', sign: 'Выходы стабильны, ты удерживаешься в астрале, двигаешься к цели и возвращаешься, когда сам решишь.' }
+};
+
+export const STEPS = RAW_STEPS.map(mergeSessions).map((s) => ({ ...s, ...(MASTERY[s.id] || {}) }));
 
 export const PROGRESS_KEY = 'flox_binaural_progress';
 export const readProgress = () => {
@@ -120,4 +131,14 @@ export const markDone = (sessionId) => {
   try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)); } catch (e) {}
   return p;
 };
-export const stepDone = (p, step) => step.sessions.some((s) => p[s.id] || (s.legacy || []).some((id) => p[id]));
+// Сколько раз пройдена практика ступени
+export const sessionsDone = (p, step) => step.sessions.reduce((n, s) => n + (p[s.id] || 0) + (s.legacy || []).reduce((m, id) => m + (p[id] || 0), 0), 0);
+// Ступень считается освоенной только когда человек сам отметил: «состояние достигается легко»
+export const stepDone = (p, step) => !!(p.mastered && p.mastered[step.id]);
+export const setMastered = (stepId, on) => {
+  const p = readProgress();
+  p.mastered = { ...(p.mastered || {}) };
+  if (on) p.mastered[stepId] = Date.now(); else delete p.mastered[stepId];
+  try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)); } catch (e) {}
+  return p;
+};
