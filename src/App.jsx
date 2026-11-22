@@ -4,7 +4,7 @@ import { VolumeX, BookOpen, Send, Trash2, Headphones, DoorOpen, Mic, Radio, Wave
 import { DECK, computeYesNoVerdictFromCards, drawCards, preloadSingleCard } from './data/deck';
 import { requestDeepTarotLLM } from './lib/llm';
 import { cleanAnalysisText, formatReadableText, nowRuDate, scrollToEl } from './lib/text';
-import { playCardFlipSound } from './lib/audio';
+import { playCardFlipSound, preloadFlipSound } from './lib/audio';
 import { globalStyles } from './styles';
 import TarotCardImage from './components/TarotCardImage';
 import RealCloudBackdrop from './components/RealCloudBackdrop';
@@ -23,7 +23,7 @@ const mediaUrls = {
   desktopMp4: '/media/desktop-loop-muted.mp4',
   phonePoster: '/media/phone-poster.webp',
   desktopPoster: '/media/desktop-poster.webp',
-  bgmMp3: '/media/tarot-ambient-loop-v2.mp3',
+  bgmMp3: '/media/tarot-ambient-loop-v3.mp3',
   tableWebm: '/media/table-cloud-loop.webm',
   tableWebp: '/media/table-on-cloud.webp',
   adviceCloudWebm: '/media/cloud-loop-alpha.webm'
@@ -37,7 +37,9 @@ const TAROT_CORE = `Ты — опытный таролог, работающий
 - Каждую карту толкуй по её классическому значению Райдера–Уэйта с учётом позиции, масти, номера и соседних карт. Не придумывай собственных трактовок.
 - Пиши практично и конкретно: что происходит, что будет, что делать. Никаких метафор, поэтических образов, загадок и иносказаний. Простые ясные предложения.
 - Если карты указывают на сроки, людей, деньги, здоровье, отношения, работу или препятствия, называй это прямо.
-- Отвечай на заданный вопрос, а не на соседние темы. Без оговорок, нравоучений и психологии.
+- Отвечай на заданный вопрос, а не на соседние темы. Без оговорок и нравоучений.
+- Это честный эзотерический расклад: ты читаешь только то, что показывают выпавшие карты. Никакого психоанализа и психологии: не пиши о чувствах, страхах, тревогах, ожиданиях, подсознании или внутренних процессах спрашивающего, не толкуй карты как «отражение его переживаний».
+- Не додумывай контекст: не строй догадок о жизни спрашивающего, его мотивах и обстоятельствах, которых нет в вопросе. Не подстраивай ответ под то, что человеку, вероятно, хочется услышать. Если карты неблагоприятны, говори это прямо.
 - В начале ответа дай прямой и однозначный вывод карт по вопросу, затем раскрой его.
 
 Как называть карты:
@@ -202,7 +204,14 @@ export default function App() {
   // Музыка (плеер теперь живёт всё время и не пересоздаётся при смене раздела)
   const [musicPlaying, setMusicPlaying] = useState(false);
   const bgmRef = useRef(null);
-  if (!bgmRef.current) bgmRef.current = createBgmLoop(mediaUrls.bgmMp3);
+  if (!bgmRef.current) bgmRef.current = createBgmLoop(mediaUrls.bgmMp3, 53.023651);
+  const musicPlayingRef = useRef(false);
+  musicPlayingRef.current = musicPlaying;
+  // Музыку выключил звук из «Звуков» (а не пользователь) — после остановки звука она вернётся сама
+  const resumeMusicRef = useRef(false);
+  const holdMusicForSound = () => {
+    if (musicPlayingRef.current) resumeMusicRef.current = true;
+  };
   const fadeIntervalRef = useRef(null);
   const wasPlayingBeforeHideRef = useRef(false);
 
@@ -217,17 +226,19 @@ export default function App() {
     setMusicPlaying(false);
   };
 
-  const sound = useSoundEngine({ beforeStart: pauseAllMusic });
+  const sound = useSoundEngine({ beforeStart: () => { holdMusicForSound(); pauseAllMusic(); } });
   const amb = useAmbient();
   const bin = useBinaural();
   // Живой эмбиент тоже выключает фоновую музыку сайта перед стартом
   useEffect(() => {
     ambient.beforeStart = () => {
+      holdMusicForSound();
       pauseAllMusic();
       if (sound.activeAudioTrack) sound.stopSoundEngine();
       if (binaural.session) binaural.stop();
     };
     binaural.beforeStart = () => {
+      holdMusicForSound();
       pauseAllMusic();
       if (sound.activeAudioTrack) sound.stopSoundEngine();
       if (ambient.active) ambient.stop();
@@ -419,9 +430,28 @@ export default function App() {
 
   const toggleMusic = () => {
     startAllBackgroundVideos();
+    resumeMusicRef.current = false;
     if (!musicPlaying) startMusicWithFade();
     else pauseAllMusic();
   };
+
+  // Когда все звуки из «Звуков» остановлены, фоновая музыка плавно возвращается сама
+  const anySoundActive = !!(amb.active || bin.active || sound.activeAudioTrack);
+  useEffect(() => {
+    if (anySoundActive || !resumeMusicRef.current) return;
+    resumeMusicRef.current = false;
+    const t = setTimeout(() => {
+      if (!ambient.active && !binaural.session) startMusicWithFade();
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anySoundActive]);
+
+  // Заранее загружаем музыку и звук входа, чтобы по нажатию всё звучало сразу
+  useEffect(() => {
+    try { bgmRef.current && bgmRef.current.load().catch(() => {}); } catch (e) {}
+    preloadFlipSound();
+  }, []);
 
   const enterSpace = () => {
     startAllBackgroundVideos();
@@ -486,7 +516,7 @@ export default function App() {
           .join('\n');
         const raw = await requestDeepTarotLLM({
           fastMode: true,
-          systemPrompt: `Ты — точный таролог-эзотерик по системе Райдера–Уэйта. Отвечаешь о том, о ком или о чём задан вопрос, без оговорок, нравоучений и психологии. Дай БЫСТРЫЙ, ЧЁТКИЙ И КРАТКИЙ разбор расклада «ДА / НЕТ / НЕЯСНО» на ${cardCount === 1 ? '1 карте' : '3 картах'}.
+          systemPrompt: `Ты — точный таролог-эзотерик по системе Райдера–Уэйта. Отвечаешь о том, о ком или о чём задан вопрос, без оговорок, нравоучений, психоанализа и догадок о чувствах спрашивающего: читаешь только то, что показывают карты. Дай БЫСТРЫЙ, ЧЁТКИЙ И КРАТКИЙ разбор расклада «ДА / НЕТ / НЕЯСНО» на ${cardCount === 1 ? '1 карте' : '3 картах'}.
 ПРАВИЛА:
 - Максимум 3–4 коротких, ёмких предложения (без воды, без длинных вступлений, без решеток ###).
 - Опирайся строго на классическую таблицу значений «Да / Нет / Неясно» и суть вопроса.
@@ -504,7 +534,7 @@ ${cardsList}
       } else if (mode === 'daily') {
         const raw = await requestDeepTarotLLM({
           fastMode: true,
-          systemPrompt: `Ты — точный таролог-эзотерик по системе Райдера–Уэйта, без оговорок, нравоучений и психологии. Сделай быстрый расклад «Совет на сегодня» на 3 картах.
+          systemPrompt: `Ты — точный таролог-эзотерик по системе Райдера–Уэйта, без оговорок, нравоучений, психоанализа и догадок о чувствах спрашивающего: читаешь только то, что показывают карты. Сделай быстрый расклад «Совет на сегодня» на 3 картах.
 ПРАВИЛА:
 - Для каждой позиции заголовок «**Позиция — Название карты**» и под ним 1–2 конкретных предложения по классическому значению карты на сегодня, без метафор, без объяснения символики, без воды и без решеток ###.
 - Внутри текста карты больше не упоминай.

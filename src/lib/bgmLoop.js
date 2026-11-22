@@ -24,8 +24,11 @@ const trimEdges = (ctx, buf) => {
 };
 
 class BgmLoop {
-  constructor(url) {
+  constructor(url, loopLen = 0) {
     this.url = url;
+    // Длина зацикленной части в конце файла: трек играет с самого начала,
+    // а потом бесконечно повторяет последние loopLen секунд (стык заранее сведён в файле)
+    this.loopLen = loopLen;
     this.ctx = null;
     this.gain = null;
     this.buf = null;
@@ -103,9 +106,15 @@ class BgmLoop {
     const s = this.ctx.createBufferSource();
     s.buffer = this.buf;
     s.loop = true;
-    s.connect(this.gain);
     const dur = this.buf.duration;
-    const off = ((this._offset % dur) + dur) % dur;
+    const ls = this.loopLen > 0 && this.loopLen < dur ? dur - this.loopLen : 0;
+    if (ls > 0) {
+      s.loopStart = ls;
+      s.loopEnd = dur;
+    }
+    s.connect(this.gain);
+    let off = Math.max(0, this._offset);
+    if (off >= dur) off = ls + ((off - ls) % (dur - ls));
     s.start(0, off);
     this._startedAt = this.ctx.currentTime - off;
     this.src = s;
@@ -125,7 +134,7 @@ class BgmLoop {
   pause() {
     this.paused = true;
     if (this.fallback) this.fallback.pause();
-    if (this.src && this.buf) this._offset = (this.ctx.currentTime - this._startedAt) % this.buf.duration;
+    if (this.src && this.buf) this._offset = this.ctx.currentTime - this._startedAt;
     this._stopSource();
   }
 
@@ -148,4 +157,4 @@ class BgmLoop {
   }
 }
 
-export const createBgmLoop = (url) => new BgmLoop(url);
+export const createBgmLoop = (url, loopLen = 0) => new BgmLoop(url, loopLen);

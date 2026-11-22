@@ -130,9 +130,6 @@ export default function BinauralLadder() {
             <button className="bn-play" title="Завершить" onClick={() => binaural.stop()}><Square size={15} /></button>
           </div>
           <div className="bn-bar"><div style={{ width: `${(st.elapsed / (st.total || 1)) * 100}%` }} /></div>
-          <ul className="bn-phases">
-            {st.session.phases.filter(Boolean).map((p, i) => <li key={i} className={i === curPhase ? 'cur' : ''}>{p}</li>)}
-          </ul>
           <div className="bn-ctrl">
             <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Volume2 size={17} />
               <input type="range" min="0" max="1" step="0.05" value={st.volume} onChange={(e) => binaural.setVolume(Number(e.target.value))} /></label>
@@ -163,6 +160,15 @@ export default function BinauralLadder() {
               {isOpen && (
                 <div className="bn-body">
                   <div style={{ color: '#dcd6f3', lineHeight: 1.55 }}>{step.goal}</div>
+                  {ok && step.sessions[0] && (
+                    <details style={{ marginTop: 10, color: '#cfc8ea' }}>
+                      <summary style={{ cursor: 'pointer', color: '#ffe3a8' }}>Как проходит практика (прочитай до начала)</summary>
+                      <ol style={{ margin: '8px 0 0', paddingLeft: 20, lineHeight: 1.55 }}>
+                        {step.sessions[0].phases.filter(Boolean).map((p, j) => <li key={j} style={{ marginBottom: 4 }}>{p}</li>)}
+                      </ol>
+                      <div style={{ marginTop: 6, color: '#a9a3c7' }}>Во время сеанса глаза закрыты, звук ведёт сам: вход и глубокая часть идут одним потоком.</div>
+                    </details>
+                  )}
                   {!ok && (
                     <div style={{ marginTop: 10, color: '#c4b5fd' }}>
                       Откроется после того, как ты пройдёшь сеанс ступени {step.id - 1}.{' '}

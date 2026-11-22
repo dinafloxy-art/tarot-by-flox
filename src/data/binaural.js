@@ -16,7 +16,7 @@ export const CARRIERS = [
   { id: 528, label: '528 Гц' }
 ];
 
-export const STEPS = [
+const RAW_STEPS = [
   {
     id: 1, title: 'Расслабление', sub: 'Альфа · 10 → 8 Гц', carrier: 200, color: '#ffe3a8',
     goal: 'Научиться за несколько минут отпускать напряжение тела и замедлять мысли. Это фундамент всех следующих ступеней.',
@@ -89,6 +89,26 @@ export const STEPS = [
   }
 ];
 
+// Каждая ступень — ОДИН непрерывный сеанс: сначала плавный вход, затем сразу
+// глубокая часть, без ручного переключения. Частота течёт без скачков.
+const mergeSessions = (step) => {
+  const [A, B] = step.sessions;
+  if (!B) return step;
+  const aSegs = A.wake === false ? A.segments : A.segments.slice(0, -1);
+  const lastEnd = aSegs[aSegs.length - 1][2];
+  const tail = B.segments.slice(1).map((s) => s.slice());
+  if (tail.length) tail[0][1] = lastEnd;
+  const segments = [...aSegs.map((s) => s.slice()), ...tail];
+  const min = Math.round(segments.reduce((sum, s) => sum + s[0], 0));
+  const phases = [...A.phases.filter(Boolean).slice(0, -1), ...B.phases.filter(Boolean).slice(1)];
+  return {
+    ...step,
+    sessions: [{ id: `s${step.id}`, title: step.title, min, segments, wake: B.wake, phases, legacy: [A.id, B.id] }]
+  };
+};
+
+export const STEPS = RAW_STEPS.map(mergeSessions);
+
 export const PROGRESS_KEY = 'flox_binaural_progress';
 export const readProgress = () => {
   try { return JSON.parse(localStorage.getItem(PROGRESS_KEY) || '{}'); } catch (e) { return {}; }
@@ -100,4 +120,4 @@ export const markDone = (sessionId) => {
   try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)); } catch (e) {}
   return p;
 };
-export const stepDone = (p, step) => step.sessions.some((s) => p[s.id]);
+export const stepDone = (p, step) => step.sessions.some((s) => p[s.id] || (s.legacy || []).some((id) => p[id]));

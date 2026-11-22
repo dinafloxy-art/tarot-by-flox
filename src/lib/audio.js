@@ -10,15 +10,45 @@ export const getAudioCtx = () => {
   return ctxSingleton;
 };
 
+const FLIP_URL = '/media/sfx-flip.mp3';
+let flipBuf = null;
+let flipLoading = false;
+
+// Заранее загружаем и раскодируем звук, чтобы он звучал мгновенно при нажатии
+export const preloadFlipSound = () => {
+  if (flipBuf || flipLoading) return;
+  flipLoading = true;
+  try {
+    const ctx = getAudioCtx();
+    fetch(FLIP_URL)
+      .then((r) => r.arrayBuffer())
+      .then((ab) => new Promise((res, rej) => { const p = ctx.decodeAudioData(ab, res, rej); if (p && p.then) p.then(res, rej); }))
+      .then((b) => { flipBuf = b; })
+      .catch(() => { flipLoading = false; });
+  } catch (e) { flipLoading = false; }
+};
+
 export const playCardFlipSound = (cardIndex = 0) => {
   try {
-    if (!flipAudio) {
-      flipAudio = new Audio('https://assets.mixkit.co/active_storage/sfx/2070/2070-preview.mp3');
-      flipAudio.preload = 'auto';
+    const ctx = getAudioCtx();
+    if (flipBuf) {
+      const s = ctx.createBufferSource();
+      const g = ctx.createGain();
+      g.gain.value = 0.45;
+      s.buffer = flipBuf;
+      s.connect(g);
+      g.connect(ctx.destination);
+      s.start(ctx.currentTime);
+    } else {
+      if (!flipAudio) {
+        flipAudio = new Audio(FLIP_URL);
+        flipAudio.preload = 'auto';
+      }
+      const clone = flipAudio.cloneNode();
+      clone.volume = 0.45;
+      clone.play().catch(() => {});
+      preloadFlipSound();
     }
-    const clone = flipAudio.cloneNode();
-    clone.volume = 0.45;
-    clone.play().catch(() => {});
   } catch (e) {}
 
   try {
