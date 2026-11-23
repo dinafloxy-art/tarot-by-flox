@@ -25,14 +25,22 @@ const css = `
   .snd-badge { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: .78rem;
     background: rgba(94,234,212,0.12); border: 1px solid rgba(94,234,212,0.3); color: #99f6e4; }
   .snd-empty { padding: 26px; border-radius: 20px; text-align: center; background: rgba(8, 18, 26, 0.78); border: 1.5px dashed rgba(94,234,212,0.35); color: #b6cfd2; font-size: 1.15rem; }
-  .snd-controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-top: 18px; padding: 14px 18px; border-radius: 18px;
-    background: rgba(8, 18, 26, 0.78); border: 1px solid rgba(94,234,212,0.25); color: #ccfbf1; }
+  .snd-player { margin-top: 18px; padding: 14px 18px; border-radius: 18px; background: rgba(8, 18, 26, 0.84); border: 1px solid rgba(94,234,212,0.32); color: #ccfbf1; display: flex; flex-direction: column; gap: 12px; }
+  .snd-seek-row { display: flex; align-items: center; gap: 10px; }
+  .snd-seek-range { flex: 1; accent-color: #5eead4; cursor: pointer; height: 6px; }
+  .snd-time { font-variant-numeric: tabular-nums; font-size: .88rem; color: #9fc3c6; min-width: 40px; text-align: center; }
+  .snd-controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
   .snd-controls select, .snd-controls input { accent-color: #5eead4; }
   .snd-controls select { background: #0b1d24; color: #ccfbf1; border: 1px solid #5eead4; border-radius: 10px; padding: 6px 10px; }
 `;
 
 const fmtLeft = (ms) => {
   const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+const fmtSec = (sec) => {
+  const s = Math.max(0, Math.floor(sec || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
@@ -64,6 +72,7 @@ export default function SoundsSection({ sound }) {
   const left = useTimerLeft(sound.timerEndsAt);
   const tracks = SOUND_TRACKS.filter((t) => t.tab === tab);
   const active = sound.activeAudioTrack;
+  const activeInTab = active && active.tab === 'meditations';
 
   return (
     <div className="text-font">
@@ -112,20 +121,37 @@ export default function SoundsSection({ sound }) {
       )}
 
       {tab === 'meditations' && tracks.some((t) => !t.comingSoon && t.src) && (
-        <div className="snd-controls">
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Volume2 size={18} />
-            <input type="range" min="0" max="1" step="0.05" value={sound.volume} onChange={(e) => sound.setVolume(Number(e.target.value))} />
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Timer size={18} /> Таймер сна
-            <select value={sound.sleepTimerMin} onChange={(e) => sound.setSleepTimerMin(Number(e.target.value))}>
-              {SLEEP_TIMERS.map((m) => (
-                <option key={m} value={m}>{m ? `${m} мин` : 'выкл'}</option>
-              ))}
-            </select>
-            {left && <span>⏾ {left}</span>}
-          </label>
+        <div className="snd-player">
+          {activeInTab && (
+            <div className="snd-seek-row">
+              <span className="snd-time">{fmtSec(sound.currentTime)}</span>
+              <input
+                className="snd-seek-range"
+                type="range"
+                min="0"
+                max={sound.duration || 600}
+                step="1"
+                value={Math.min(sound.currentTime || 0, sound.duration || 600)}
+                onChange={(e) => sound.seek(Number(e.target.value))}
+              />
+              <span className="snd-time">{fmtSec(sound.duration)}</span>
+            </div>
+          )}
+          <div className="snd-controls">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Volume2 size={18} />
+              <input type="range" min="0" max="1" step="0.05" value={sound.volume} onChange={(e) => sound.setVolume(Number(e.target.value))} />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Timer size={18} /> Таймер сна
+              <select value={sound.sleepTimerMin} onChange={(e) => sound.setSleepTimerMin(Number(e.target.value))}>
+                {SLEEP_TIMERS.map((m) => (
+                  <option key={m} value={m}>{m ? `${m} мин` : 'выкл'}</option>
+                ))}
+              </select>
+              {left && <span>⏾ {left}</span>}
+            </label>
+          </div>
         </div>
       )}
     </div>

@@ -6,6 +6,8 @@ export function useSoundEngine({ beforeStart } = {}) {
   const [activeAudioTrack, setActiveAudioTrack] = useState(null);
   const [paused, setPaused] = useState(false);
   const [volume, setVolumeState] = useState(0.8);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [sleepTimerMin, setSleepTimerMinState] = useState(0);
   const [timerEndsAt, setTimerEndsAt] = useState(null);
   const customSoundAudioRef = useRef(null);
@@ -23,12 +25,17 @@ export function useSoundEngine({ beforeStart } = {}) {
     const a = customSoundAudioRef.current;
     if (a) {
       a.onended = null;
+      a.ontimeupdate = null;
+      a.onloadedmetadata = null;
+      a.ondurationchange = null;
       a.pause();
       a.removeAttribute('src');
       a.load();
     }
     setActiveAudioTrack(null);
     setPaused(false);
+    setCurrentTime(0);
+    setDuration(0);
   };
 
   const armTimer = (min) => {
@@ -36,6 +43,14 @@ export function useSoundEngine({ beforeStart } = {}) {
     if (!min) return;
     setTimerEndsAt(Date.now() + min * 60000);
     timerRef.current = setTimeout(stopSoundEngine, min * 60000);
+  };
+
+  const seek = (sec) => {
+    const a = customSoundAudioRef.current;
+    if (!a || !activeAudioTrack) return;
+    const target = Math.max(0, Math.min(Number(sec) || 0, a.duration || 0));
+    a.currentTime = target;
+    setCurrentTime(target);
   };
 
   const playTrack = (track) => {
@@ -46,6 +61,18 @@ export function useSoundEngine({ beforeStart } = {}) {
     a.loop = track.loop !== false;
     a.volume = volume;
     a.setAttribute('playsinline', '');
+    setCurrentTime(0);
+    setDuration(0);
+    a.onloadedmetadata = () => {
+      if (Number.isFinite(a.duration)) setDuration(a.duration);
+    };
+    a.ondurationchange = () => {
+      if (Number.isFinite(a.duration)) setDuration(a.duration);
+    };
+    a.ontimeupdate = () => {
+      setCurrentTime(a.currentTime || 0);
+      if (Number.isFinite(a.duration) && a.duration > 0) setDuration(a.duration);
+    };
     a.onended = () => {
       if (!a.loop) stopSoundEngine();
     };
@@ -56,6 +83,11 @@ export function useSoundEngine({ beforeStart } = {}) {
         navigator.mediaSession.metadata = new window.MediaMetadata({ title: track.title || 'Звуки', artist: 'Магическое пространство · by.Flox' });
         navigator.mediaSession.setActionHandler('play', () => { a.play().catch(() => {}); setPaused(false); });
         navigator.mediaSession.setActionHandler('pause', () => { a.pause(); setPaused(true); });
+        try {
+          navigator.mediaSession.setActionHandler('seekto', (details) => {
+            if (details && typeof details.seekTime === 'number') seek(details.seekTime);
+          });
+        } catch (e) {}
       }
     } catch (e) {}
     setActiveAudioTrack(track);
@@ -92,6 +124,9 @@ export function useSoundEngine({ beforeStart } = {}) {
     paused,
     volume,
     setVolume,
+    currentTime,
+    duration,
+    seek,
     sleepTimerMin,
     setSleepTimerMin,
     timerEndsAt,
