@@ -254,6 +254,8 @@ export default function App() {
       binaural.beforeStart = null;
     };
   });
+  const soundActiveRef = useRef(false);
+  soundActiveRef.current = !!sound.activeAudioTrack;
   const sleepLeft = useTimerLeft(sound.timerEndsAt);
   // eslint-disable-next-line no-unused-vars
   const dreams = useDreams({ onError: setErrorMsg }); // экраны «Снов» подключаются на шагах 6–7
@@ -415,7 +417,7 @@ export default function App() {
       }
       if (mobileHeldRef.current) {
         mobileHeldRef.current = false;
-        if (musicPlaying && !ambient.active && !binaural.session) startMusicWithFade();
+        if (musicPlaying && !ambient.active && !binaural.session && !soundActiveRef.current) startMusicWithFade();
       } else if (musicPlaying && bgmRef.current && bgmRef.current.ctx && bgmRef.current.ctx.state !== 'running') {
         bgmRef.current.ctx.resume().catch(() => {});
       }

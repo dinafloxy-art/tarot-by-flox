@@ -28,10 +28,19 @@ export function useSoundEngine({ beforeStart } = {}) {
       a.ontimeupdate = null;
       a.onloadedmetadata = null;
       a.ondurationchange = null;
+      a.onplay = null;
+      a.onpause = null;
       a.pause();
       a.removeAttribute('src');
       a.load();
     }
+    try {
+      if ('mediaSession' in navigator) {
+        const ms = navigator.mediaSession;
+        ['play', 'pause', 'stop', 'seekto', 'seekbackward', 'seekforward'].forEach((n) => { try { ms.setActionHandler(n, null); } catch (err) {} });
+        ms.metadata = null; ms.playbackState = 'none';
+      }
+    } catch (err) {}
     setActiveAudioTrack(null);
     setPaused(false);
     setCurrentTime(0);
@@ -59,7 +68,7 @@ export function useSoundEngine({ beforeStart } = {}) {
     if (beforeStart) beforeStart();
     a.src = track.src;
     a.loop = track.loop !== false;
-    a.volume = volume;
+    a.volume = 1; // громкость медитаций выровнена в самих файлах
     a.setAttribute('playsinline', '');
     setCurrentTime(0);
     setDuration(0);
@@ -76,20 +85,36 @@ export function useSoundEngine({ beforeStart } = {}) {
     a.onended = () => {
       if (!a.loop) stopSoundEngine();
     };
-    a.play().catch(() => {});
-    try {
-      if (navigator.audioSession) navigator.audioSession.type = 'playback';
-      if ('mediaSession' in navigator && typeof window.MediaMetadata === 'function') {
-        navigator.mediaSession.metadata = new window.MediaMetadata({ title: track.title || 'Звуки', artist: 'Магическое пространство · by.Flox' });
-        navigator.mediaSession.setActionHandler('play', () => { a.play().catch(() => {}); setPaused(false); });
-        navigator.mediaSession.setActionHandler('pause', () => { a.pause(); setPaused(true); });
-        try {
-          navigator.mediaSession.setActionHandler('seekto', (details) => {
-            if (details && typeof details.seekTime === 'number') seek(details.seekTime);
-          });
-        } catch (e) {}
-      }
-    } catch (e) {}
+    // Экран блокировки iPhone: карточка «Сейчас играет» принадлежит медитации.
+    // Обработчики заново ставятся при каждом запуске звука, чтобы их не перехватили эмбиент, ритмы или музыка сайта,
+    // иначе кнопка ▶ на заблокированном экране включала другое приложение.
+    const claimSession = () => {
+      try {
+        if (navigator.audioSession) navigator.audioSession.type = 'playback';
+        if (!('mediaSession' in navigator)) return;
+        const ms = navigator.mediaSession;
+        if (typeof window.MediaMetadata === 'function') {
+          ms.metadata = new window.MediaMetadata({ title: track.title || 'Медитация', artist: 'Магическое пространство · by.Flox', album: 'Медитации' });
+        }
+        const set = (n, f) => { try { ms.setActionHandler(n, f); } catch (err) {} };
+        set('play', () => { a.play().catch(() => {}); });
+        set('pause', () => { a.pause(); });
+        set('stop', () => { stopSoundEngine(); });
+        set('seekto', (d) => { if (d && typeof d.seekTime === 'number') { a.currentTime = d.seekTime; } });
+        set('seekbackward', (d) => { a.currentTime = Math.max(0, a.currentTime - ((d && d.seekOffset) || 15)); });
+        set('seekforward', (d) => { a.currentTime = Math.min(a.duration || 0, a.currentTime + ((d && d.seekOffset) || 15)); });
+        set('previoustrack', null); set('nexttrack', null);
+        ms.playbackState = a.paused ? 'paused' : 'playing';
+        if (ms.setPositionState && Number.isFinite(a.duration) && a.duration > 0) {
+          ms.setPositionState({ duration: a.duration, position: Math.min(a.currentTime, a.duration), playbackRate: 1 });
+        }
+      } catch (err) {}
+    };
+    // состояние кнопок синхронизируется и с паузой/пуском с экрана блокировки
+    a.onplay = () => { setPaused(false); claimSession(); };
+    a.onpause = () => { setPaused(true); try { navigator.mediaSession.playbackState = 'paused'; } catch (err) {} };
+    a.play().then(claimSession).catch(() => {});
+    claimSession();
     setActiveAudioTrack(track);
     setPaused(false);
     armTimer(sleepTimerMin);
@@ -99,7 +124,7 @@ export function useSoundEngine({ beforeStart } = {}) {
     const a = customSoundAudioRef.current;
     if (!a || !activeAudioTrack) return;
     if (a.paused) {
-      a.play().catch(() => {});
+      a.play().catch(() => {}); // карточку экрана блокировки обновит событие play
       setPaused(false);
     } else {
       a.pause();

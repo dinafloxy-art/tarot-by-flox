@@ -13,7 +13,7 @@ export const SOUND_TRACKS = [
     tab: 'meditations',
     title: 'Золотой свет дня',
     subtitle: 'Утренняя медитация • 10 мин',
-    src: '/media/sounds/morning-golden-light.mp3',
+    src: '/media/sounds/morning-golden-light.mp3?v=2',
     loop: false
   },
   {
@@ -21,7 +21,7 @@ export const SOUND_TRACKS = [
     tab: 'meditations',
     title: 'Спа для мозга',
     subtitle: 'Перезагрузка и очищение ума • 10 мин',
-    src: '/media/sounds/brain-spa.mp3',
+    src: '/media/sounds/brain-spa.mp3?v=2',
     loop: false
   },
   {
