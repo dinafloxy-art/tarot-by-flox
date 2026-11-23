@@ -243,7 +243,7 @@ class BinauralEngine {
       const ms = navigator.mediaSession;
       if (this.session) {
         if (typeof window.MediaMetadata === 'function')
-          ms.metadata = new window.MediaMetadata({ title: `Ступень ${this.step.id} · ${this.session.title}`, artist: 'Бинауральные ритмы · by.Flox', album: this.step.title, artwork: [{ src: '/media/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/media/icon-512.png', sizes: '512x512', type: 'image/png' }] });
+          ms.metadata = new window.MediaMetadata({ title: `Ступень ${this.step.id} · ${this.session.title}`, artist: 'Бинауральные ритмы · by.Flox', album: this.step.title });
         ms.playbackState = this.isPlaying ? 'playing' : 'paused';
         ms.setActionHandler('play', () => this.resume());
         ms.setActionHandler('pause', () => this.pause());

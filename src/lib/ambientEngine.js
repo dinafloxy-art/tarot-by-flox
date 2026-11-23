@@ -830,7 +830,7 @@ class SoundscapeController {
       if (this.active) {
         const meta = MODE_META[this.activeModeId];
         if (typeof window.MediaMetadata === 'function') {
-          ms.metadata = new window.MediaMetadata({ title: `Эмбиент · ${meta.title}`, artist: 'Магическое пространство · by.Flox', album: meta.purpose, artwork: [{ src: '/media/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/media/icon-512.png', sizes: '512x512', type: 'image/png' }] });
+          ms.metadata = new window.MediaMetadata({ title: `Эмбиент · ${meta.title}`, artist: 'Магическое пространство · by.Flox', album: meta.purpose });
         }
         ms.playbackState = this.isPlaying ? 'playing' : 'paused';
         ms.setActionHandler('play', () => this.play());
