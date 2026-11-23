@@ -227,7 +227,12 @@ export default function App() {
     setMusicPlaying(false);
   };
 
-  const sound = useSoundEngine({ beforeStart: () => { holdMusicForSound(); pauseAllMusic(); } });
+  const sound = useSoundEngine({ beforeStart: () => {
+    holdMusicForSound(); pauseAllMusic();
+    // медитация выключает эмбиент и ритмы, чтобы звуки не накладывались
+    if (ambient.active) ambient.stop();
+    if (binaural.session) binaural.stop();
+  } });
   const amb = useAmbient();
   const bin = useBinaural();
   // Живой эмбиент тоже выключает фоновую музыку сайта перед стартом

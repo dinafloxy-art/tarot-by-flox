@@ -85,6 +85,41 @@ export default function SoundsSection({ sound }) {
         ))}
       </div>
 
+      {tab === 'meditations' && tracks.some((t) => !t.comingSoon && t.src) && (
+        <div className="snd-player" style={{ marginTop: 0, marginBottom: 16 }}>
+          {activeInTab && (
+            <div className="snd-seek-row">
+              <span className="snd-time">{fmtSec(sound.currentTime)}</span>
+              <input
+                className="snd-seek-range"
+                type="range"
+                min="0"
+                max={sound.duration || 600}
+                step="1"
+                value={Math.min(sound.currentTime || 0, sound.duration || 600)}
+                onChange={(e) => sound.seek(Number(e.target.value))}
+              />
+              <span className="snd-time">{fmtSec(sound.duration)}</span>
+            </div>
+          )}
+          <div className="snd-controls">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Volume2 size={18} />
+              <input type="range" min="0" max="1" step="0.05" value={sound.volume} onChange={(e) => sound.setVolume(Number(e.target.value))} />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Timer size={18} /> Таймер сна
+              <select value={sound.sleepTimerMin} onChange={(e) => sound.setSleepTimerMin(Number(e.target.value))}>
+                {SLEEP_TIMERS.map((m) => (
+                  <option key={m} value={m}>{m ? `${m} мин` : 'выкл'}</option>
+                ))}
+              </select>
+              {left && <span>⏾ {left}</span>}
+            </label>
+          </div>
+        </div>
+      )}
+
       {tab === 'ambients' ? (
         <AmbientStudio />
       ) : tab === 'binaural' ? (
@@ -120,40 +155,6 @@ export default function SoundsSection({ sound }) {
         </div>
       )}
 
-      {tab === 'meditations' && tracks.some((t) => !t.comingSoon && t.src) && (
-        <div className="snd-player">
-          {activeInTab && (
-            <div className="snd-seek-row">
-              <span className="snd-time">{fmtSec(sound.currentTime)}</span>
-              <input
-                className="snd-seek-range"
-                type="range"
-                min="0"
-                max={sound.duration || 600}
-                step="1"
-                value={Math.min(sound.currentTime || 0, sound.duration || 600)}
-                onChange={(e) => sound.seek(Number(e.target.value))}
-              />
-              <span className="snd-time">{fmtSec(sound.duration)}</span>
-            </div>
-          )}
-          <div className="snd-controls">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Volume2 size={18} />
-              <input type="range" min="0" max="1" step="0.05" value={sound.volume} onChange={(e) => sound.setVolume(Number(e.target.value))} />
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Timer size={18} /> Таймер сна
-              <select value={sound.sleepTimerMin} onChange={(e) => sound.setSleepTimerMin(Number(e.target.value))}>
-                {SLEEP_TIMERS.map((m) => (
-                  <option key={m} value={m}>{m ? `${m} мин` : 'выкл'}</option>
-                ))}
-              </select>
-              {left && <span>⏾ {left}</span>}
-            </label>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
