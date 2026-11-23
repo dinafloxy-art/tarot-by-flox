@@ -23,7 +23,7 @@ const mediaUrls = {
   desktopMp4: '/media/desktop-loop-muted.mp4',
   phonePoster: '/media/phone-poster.webp',
   desktopPoster: '/media/desktop-poster.webp',
-  bgmMp3: '/media/tarot-ambient-loop-v4.mp3',
+  bgmMp3: '/media/tarot-ambient-loop-v5.mp3',
   tableWebm: '/media/table-cloud-loop.webm',
   tableWebp: '/media/table-on-cloud.webp',
   adviceCloudWebm: '/media/cloud-loop-alpha.webm'
@@ -438,15 +438,15 @@ export default function App() {
     a.play()
       .then(() => {
         setMusicPlaying(true);
-        // мягкое нарастание за 4 секунды по плавной кривой
+        // звук слышен сразу после нажатия и плавно нарастает за 1,5 секунды
         const t0 = Date.now();
         fadeIntervalRef.current = setInterval(() => {
           // плавное вступление уже записано в начале трека, здесь только мягкий подъём
           const ua = navigator.userAgent || '';
           const isMobile = /iPhone|iPad|iPod|Android/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
           const targetVol = isMobile ? 0.2 : 0.26;
-          const k = Math.min(1, (Date.now() - t0) / 2400);
-          if (bgmRef.current) bgmRef.current.volume = targetVol * k;
+          const k = Math.min(1, (Date.now() - t0) / 1500);
+          if (bgmRef.current) bgmRef.current.volume = targetVol * Math.sin(k * Math.PI / 2);
           if (k >= 1) clearInterval(fadeIntervalRef.current);
         }, 60);
       })
