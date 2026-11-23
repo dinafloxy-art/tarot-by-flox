@@ -60,6 +60,12 @@ export function useSoundEngine({ beforeStart } = {}) {
     const target = Math.max(0, Math.min(Number(sec) || 0, a.duration || 0));
     a.currentTime = target;
     setCurrentTime(target);
+    try {
+      const ms = navigator.mediaSession;
+      if (ms && ms.setPositionState && Number.isFinite(a.duration) && a.duration > 0) {
+        ms.setPositionState({ duration: a.duration, position: Math.min(target, a.duration), playbackRate: 1 });
+      }
+    } catch (err) {}
   };
 
   const playTrack = (track) => {
@@ -74,6 +80,7 @@ export function useSoundEngine({ beforeStart } = {}) {
     setDuration(0);
     a.onloadedmetadata = () => {
       if (Number.isFinite(a.duration)) setDuration(a.duration);
+      claimSession();
     };
     a.ondurationchange = () => {
       if (Number.isFinite(a.duration)) setDuration(a.duration);
@@ -94,7 +101,7 @@ export function useSoundEngine({ beforeStart } = {}) {
         if (!('mediaSession' in navigator)) return;
         const ms = navigator.mediaSession;
         if (typeof window.MediaMetadata === 'function') {
-          ms.metadata = new window.MediaMetadata({ title: track.title || 'Медитация', artist: 'Магическое пространство · by.Flox', album: 'Медитации' });
+          ms.metadata = new window.MediaMetadata({ title: track.title || 'Медитация', artist: 'Магическое пространство · by.Flox', album: 'Медитации', artwork: [{ src: '/media/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/media/icon-512.png', sizes: '512x512', type: 'image/png' }] });
         }
         const set = (n, f) => { try { ms.setActionHandler(n, f); } catch (err) {} };
         set('play', () => { a.play().catch(() => {}); });
